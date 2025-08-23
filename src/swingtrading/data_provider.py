@@ -14,7 +14,7 @@ from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.data.enums import Adjustment, DataFeed
 from alpaca.common.exceptions import APIError as AlpacaAPIError
-from alpaca.data.exceptions import NoDataAvailable
+# from alpaca.data.exceptions import NoDataAvailable  # Not available in current alpaca-py version
 
 from .exceptions import DataError
 from .rate_limiter import TokenBucket
@@ -309,8 +309,8 @@ class DataProvider:
                     
                 raise
                 
-            except NoDataAvailable:
-                raise DataError(f"No data available for {symbol}")
+            # except NoDataAvailable:
+            #     raise DataError(f"No data available for {symbol}")
                 
             except (ConnectionError, TimeoutError) as e:
                 last_exception = e
@@ -367,11 +367,25 @@ class DataProvider:
         else:
             raise DataError(f"Unexpected response shape from Alpaca SDK for {symbol}")
         
+        # Handle MultiIndex (symbol, timestamp) from Alpaca
+        if isinstance(df.index, pd.MultiIndex):
+            # Extract the timestamp level (usually level 1)
+            if symbol in df.index.get_level_values(0):
+                df = df.loc[symbol]
+            else:
+                # Try to reset index and filter
+                df = df.reset_index()
+                if 'symbol' in df.columns:
+                    df = df[df['symbol'] == symbol]
+                if 'timestamp' in df.columns:
+                    df = df.set_index('timestamp')
+        
         # Ensure timezone-aware index in the configured timezone
-        if df.index.tz is None:
-            df.index = df.index.tz_localize('UTC').tz_convert(self.timezone)
-        elif df.index.tz != self.timezone:
-            df.index = df.index.tz_convert(self.timezone)
+        if hasattr(df.index, 'tz'):
+            if df.index.tz is None:
+                df.index = df.index.tz_localize('UTC').tz_convert(self.timezone)
+            elif df.index.tz != self.timezone:
+                df.index = df.index.tz_convert(self.timezone)
         
         return df
     
