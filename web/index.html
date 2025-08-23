@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwingTrading Scanner</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+</head>
+<body>
+    <!-- Header -->
+    <header id="app-header">
+        <div class="app-title">
+            <h1>SwingTrading Scanner</h1>
+            <span class="session-date" id="session-date"></span>
+        </div>
+        <div class="run-controls">
+            <button id="run-btn" class="btn btn-primary">Run Scan</button>
+            <span class="status-badge" id="status-badge">Idle</span>
+            <button id="cancel-btn" class="btn btn-danger" style="display: none;">Cancel</button>
+        </div>
+        <div class="actions">
+            <button id="export-btn" class="btn btn-secondary" title="Export CSV">Export</button>
+            <button id="cli-btn" class="btn btn-secondary" title="Copy CLI Command">CLI</button>
+            <button id="help-btn" class="btn btn-secondary" title="Help">?</button>
+            <button id="settings-btn" class="btn btn-secondary" title="Settings">⚙</button>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="main-layout">
+        <!-- Controls Sidebar -->
+        <aside id="controls-panel" class="controls-panel">
+            <!-- Quick Controls -->
+            <section class="controls-section quick-controls">
+                <h2>Quick Controls</h2>
+                
+                <div class="control-group">
+                    <label for="ticker-input">Tickers (comma-separated)</label>
+                    <input type="text" id="ticker-input" placeholder="AAPL, MSFT, GOOGL" class="control-input">
+                </div>
+
+                <div class="control-group">
+                    <label for="feed-select">Data Feed</label>
+                    <select id="feed-select" class="control-select">
+                        <option value="iex">IEX (Free)</option>
+                        <option value="sip">SIP (Paid)</option>
+                    </select>
+                    <small class="feed-note" style="display: none;">Feed change may affect results comparability</small>
+                </div>
+
+                <div class="control-group">
+                    <label for="regime-bypass">
+                        <input type="checkbox" id="regime-bypass">
+                        Bypass SPY regime filter
+                    </label>
+                </div>
+
+                <div class="control-group">
+                    <label for="sort-select">Sort Results By</label>
+                    <select id="sort-select" class="control-select">
+                        <option value="score">Score</option>
+                        <option value="rsi14">RSI</option>
+                        <option value="gap_percent">Gap %</option>
+                    </select>
+                </div>
+
+                <div class="control-group presets">
+                    <label>Presets</label>
+                    <div class="preset-chips">
+                        <button class="chip" data-preset="conservative">Conservative</button>
+                        <button class="chip chip-active" data-preset="balanced">Balanced</button>
+                        <button class="chip" data-preset="aggressive">Aggressive</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Advanced Controls -->
+            <section class="controls-section advanced-controls">
+                <h2>
+                    <button class="accordion-toggle" aria-expanded="false">
+                        ▶ Advanced Settings
+                    </button>
+                </h2>
+                
+                <div class="accordion-content" style="display: none;">
+                    <!-- Universe -->
+                    <div class="control-subsection">
+                        <h3>Universe</h3>
+                        <div class="control-group">
+                            <label for="universe-input">Tickers (preserves order)</label>
+                            <textarea id="universe-input" class="control-textarea" rows="3"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Filters -->
+                    <div class="control-subsection">
+                        <h3>Filters</h3>
+                        <div class="control-group">
+                            <label for="min-price">Min Price ($)</label>
+                            <input type="number" id="min-price" class="control-input" min="0" step="0.5" value="5">
+                        </div>
+                        <div class="control-group">
+                            <label for="max-gap">Max Gap (%)</label>
+                            <input type="number" id="max-gap" class="control-input" min="0" max="100" step="1" value="15">
+                        </div>
+                        <div class="control-group">
+                            <label for="min-atr">Min ATR Ratio</label>
+                            <input type="range" id="min-atr" class="control-slider" min="0" max="0.1" step="0.001" value="0.01">
+                            <span class="slider-value">0.01</span>
+                        </div>
+                        <div class="control-group">
+                            <label for="min-volume">Min 10-day $ Volume (M)</label>
+                            <input type="number" id="min-volume" class="control-input" min="0" step="1" value="5">
+                        </div>
+                    </div>
+
+                    <!-- Indicators -->
+                    <div class="control-subsection">
+                        <h3>Indicators</h3>
+                        <div class="control-group">
+                            <label for="atr-period">ATR Period</label>
+                            <input type="number" id="atr-period" class="control-input" min="5" max="50" value="20">
+                        </div>
+                        <div class="control-group">
+                            <label for="rsi-period">RSI Period</label>
+                            <input type="number" id="rsi-period" class="control-input" min="5" max="30" value="14">
+                        </div>
+                        <div class="control-group">
+                            <label for="sma-short">SMA Short</label>
+                            <input type="number" id="sma-short" class="control-input" min="5" max="50" value="20">
+                        </div>
+                        <div class="control-group">
+                            <label for="sma-long">SMA Long</label>
+                            <input type="number" id="sma-long" class="control-input" min="20" max="200" value="50">
+                        </div>
+                    </div>
+
+                    <!-- Scoring Weights -->
+                    <div class="control-subsection">
+                        <h3>Scoring Weights <span class="weight-sum" id="weight-sum">100%</span></h3>
+                        <div class="weight-normalized" id="weight-normalized" style="display: none;">auto-normalized</div>
+                        
+                        <div class="control-group">
+                            <label for="weight-pullback">Pullback Proximity (<span id="pullback-val">30</span>%)</label>
+                            <input type="range" id="weight-pullback" class="control-slider weight-slider" min="0" max="100" value="30">
+                        </div>
+                        <div class="control-group">
+                            <label for="weight-trend">Trend Strength (<span id="trend-val">25</span>%)</label>
+                            <input type="range" id="weight-trend" class="control-slider weight-slider" min="0" max="100" value="25">
+                        </div>
+                        <div class="control-group">
+                            <label for="weight-rsi">RSI Headroom (<span id="rsi-val">25</span>%)</label>
+                            <input type="range" id="weight-rsi" class="control-slider weight-slider" min="0" max="100" value="25">
+                        </div>
+                        <div class="control-group">
+                            <label for="weight-volume">Volume Ratio (<span id="volume-val">20</span>%)</label>
+                            <input type="range" id="weight-volume" class="control-slider weight-slider" min="0" max="100" value="20">
+                        </div>
+                    </div>
+
+                    <!-- Performance -->
+                    <div class="control-subsection">
+                        <h3>Performance</h3>
+                        <div class="control-group">
+                            <label for="max-workers">Max Workers</label>
+                            <input type="number" id="max-workers" class="control-input" min="1" max="20" value="10">
+                        </div>
+                        <div class="control-group">
+                            <label for="rate-limit">Rate Limit (per min)</label>
+                            <input type="number" id="rate-limit" class="control-input" min="10" max="200" value="190">
+                        </div>
+                        <div class="control-group">
+                            <label for="timeout">Timeout (seconds)</label>
+                            <input type="number" id="timeout" class="control-input" min="5" max="120" value="30">
+                        </div>
+                        <div class="control-group">
+                            <label for="start-full">
+                                <input type="checkbox" id="start-full">
+                                Start rate bucket full
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Controls Footer -->
+            <footer class="controls-footer">
+                <button id="reset-btn" class="btn btn-secondary">Reset to Defaults</button>
+                <button id="save-defaults-btn" class="btn btn-secondary">Save as Default</button>
+            </footer>
+        </aside>
+
+        <!-- Results Area -->
+        <main id="results-area" class="results-area">
+            <!-- Run Header -->
+            <div class="run-header" id="run-header" style="display: none;">
+                <span id="run-info"></span>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="progress-container" id="progress-container" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <span class="progress-text" id="progress-text">0 / 0</span>
+            </div>
+
+            <!-- Guidance Strip -->
+            <div class="guidance-strip" id="guidance-strip" style="display: none;">
+                <span class="guidance-text" id="guidance-text"></span>
+                <button class="guidance-action" id="guidance-action">Re-run with suggested settings</button>
+            </div>
+
+            <!-- Edited State Overlay -->
+            <div class="edited-overlay" id="edited-overlay" style="display: none;">
+                Results reflect previous settings
+            </div>
+
+            <!-- Results Table Container -->
+            <div class="results-container" id="results-container">
+                <!-- Empty States -->
+                <div class="empty-state" id="empty-never-run">
+                    <h2>Ready to scan</h2>
+                    <p>Set your filters and hit Run to find swing trading opportunities.</p>
+                    <button class="btn btn-primary" onclick="document.getElementById('run-btn').click()">Run Scan</button>
+                </div>
+
+                <div class="empty-state" id="empty-regime" style="display: none;">
+                    <h2>Market regime filter active</h2>
+                    <p>SPY RSI (<span id="spy-rsi-value">--</span>) is below threshold (30).</p>
+                    <button class="btn btn-secondary" onclick="document.getElementById('regime-bypass').click()">
+                        Bypass regime filter
+                    </button>
+                    <p class="empty-note">or wait for market conditions to improve</p>
+                </div>
+
+                <div class="empty-state" id="empty-no-results" style="display: none;">
+                    <h2>No symbols passed filters</h2>
+                    <p>All <span id="universe-count">20</span> tickers were filtered out.</p>
+                    <p>Try: Lower min dollar volume to $3M or reduce ATR ratio to 0.005</p>
+                    <button class="btn btn-primary" id="apply-suggestion-btn">Apply suggestion & Re-run</button>
+                </div>
+
+                <!-- Results Table -->
+                <div class="results-table-wrapper" id="results-table-wrapper" style="display: none;">
+                    <table class="results-table" id="results-table">
+                        <thead>
+                            <tr>
+                                <th data-sort="symbol">Symbol <span class="sort-arrow"></span></th>
+                                <th data-sort="close">Price <span class="sort-arrow"></span></th>
+                                <th data-sort="score">Score <span class="sort-arrow"></span></th>
+                                <th data-sort="rsi14">RSI <span class="sort-arrow"></span></th>
+                                <th data-sort="gap_percent">Gap% <span class="sort-arrow"></span></th>
+                                <th data-sort="volume_ratio">Vol Ratio <span class="sort-arrow"></span></th>
+                                <th data-sort="trend_vs_sma50">Trend vs SMA50 <span class="sort-arrow"></span></th>
+                                <th data-sort="pullback_from_high20">Pullback <span class="sort-arrow"></span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-tbody">
+                            <!-- Results will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+
+        <!-- Detail Drawer -->
+        <aside id="detail-drawer" class="detail-drawer" style="display: none;">
+            <button class="drawer-close" id="drawer-close">×</button>
+            
+            <div class="drawer-content">
+                <div class="drawer-header">
+                    <h2 id="drawer-symbol">--</h2>
+                    <div class="drawer-price" id="drawer-price">$--</div>
+                    <div class="drawer-date" id="drawer-date">--</div>
+                </div>
+
+                <div class="drawer-chart" id="drawer-chart">
+                    <!-- Sparkline will be rendered here -->
+                </div>
+
+                <div class="drawer-indicators">
+                    <h3>Indicators</h3>
+                    <div class="indicator-grid">
+                        <div class="indicator-item">
+                            <span class="indicator-label">ATR20:</span>
+                            <span class="indicator-value" id="drawer-atr">--</span>
+                        </div>
+                        <div class="indicator-item">
+                            <span class="indicator-label">RSI14:</span>
+                            <span class="indicator-value" id="drawer-rsi">--</span>
+                        </div>
+                        <div class="indicator-item">
+                            <span class="indicator-label">SMA20:</span>
+                            <span class="indicator-value" id="drawer-sma20">--</span>
+                        </div>
+                        <div class="indicator-item">
+                            <span class="indicator-label">SMA50:</span>
+                            <span class="indicator-value" id="drawer-sma50">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="drawer-score">
+                    <h3>Score Composition (<span id="drawer-total-score">--</span> total)</h3>
+                    <div class="score-breakdown">
+                        <div class="score-component">
+                            <span class="score-label">Pullback (30%):</span>
+                            <div class="score-bar">
+                                <div class="score-fill" id="score-pullback" style="width: 0%"></div>
+                            </div>
+                            <span class="score-value" id="score-pullback-val">0.0</span>
+                        </div>
+                        <div class="score-component">
+                            <span class="score-label">Trend (25%):</span>
+                            <div class="score-bar">
+                                <div class="score-fill" id="score-trend" style="width: 0%"></div>
+                            </div>
+                            <span class="score-value" id="score-trend-val">0.0</span>
+                        </div>
+                        <div class="score-component">
+                            <span class="score-label">RSI Room (25%):</span>
+                            <div class="score-bar">
+                                <div class="score-fill" id="score-rsi" style="width: 0%"></div>
+                            </div>
+                            <span class="score-value" id="score-rsi-val">0.0</span>
+                        </div>
+                        <div class="score-component">
+                            <span class="score-label">Volume (20%):</span>
+                            <div class="score-bar">
+                                <div class="score-fill" id="score-volume" style="width: 0%"></div>
+                            </div>
+                            <span class="score-value" id="score-volume-val">0.0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="drawer-liquidity">
+                    <h3>Liquidity</h3>
+                    <p>10-day avg dollar volume: <span id="drawer-dollar-volume">--</span></p>
+                </div>
+
+                <div class="drawer-actions">
+                    <button class="btn btn-secondary" id="copy-symbol-btn">Copy Symbol</button>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Help Overlay -->
+    <div id="help-overlay" class="overlay" style="display: none;">
+        <div class="overlay-content">
+            <button class="overlay-close" onclick="this.parentElement.parentElement.style.display='none'">×</button>
+            <h2>SwingTrading Scanner Help</h2>
+            <div id="help-content">
+                <!-- Help content will be loaded from RESULTS_GUIDE.md -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="api.js"></script>
+    <script src="components/formatting.js"></script>
+    <script src="components/controls.js"></script>
+    <script src="components/table.js"></script>
+    <script src="components/drawer.js"></script>
+    <script src="components/progress.js"></script>
+    <script src="components/toasts.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
