@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SwingTrading - Actually Working</title>
+    <style>
+        body { 
+            font-family: -apple-system, system-ui; 
+            padding: 40px; 
+            max-width: 800px; 
+            margin: 0 auto;
+        }
+        button { 
+            padding: 12px 24px; 
+            background: #3b82f6; 
+            color: white; 
+            border: none;
+            border-radius: 6px;
+            cursor: pointer; 
+            font-size: 16px;
+        }
+        button:hover { background: #2563eb; }
+        .status { 
+            display: inline-block;
+            padding: 8px 16px; 
+            background: #f3f4f6; 
+            border-radius: 20px; 
+            margin-left: 12px;
+        }
+        .status.running { background: #fbbf24; }
+        .status.done { background: #10b981; color: white; }
+        #results { margin-top: 30px; }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        th { 
+            background: #f9fafb; 
+            padding: 12px; 
+            text-align: left; 
+            font-weight: 600;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        td { 
+            padding: 12px; 
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e5e7eb;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #3b82f6;
+            transition: width 0.3s;
+        }
+        .error {
+            color: #ef4444;
+            padding: 10px;
+            background: #fee;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎯 SwingTrading Scanner</h1>
+    <p>This is the working version - click Run to see real results!</p>
+    
+    <div>
+        <button onclick="runScan()">Run Scan</button>
+        <span id="status" class="status">Ready</span>
+    </div>
+    
+    <div id="progressContainer" style="display:none;">
+        <div class="progress-bar">
+            <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <span id="progressText">Starting...</span>
+    </div>
+    
+    <div id="error" class="error" style="display:none;"></div>
+    
+    <div id="results">
+        <table id="resultsTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Price</th>
+                    <th>Score</th>
+                    <th>RSI</th>
+                    <th>Gap %</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        // Check API on load
+        window.onload = async function() {
+            try {
+                const response = await fetch('http://localhost:8000/api/config');
+                if (response.ok) {
+                    console.log('✅ API Connected');
+                    document.getElementById('status').textContent = 'Ready';
+                }
+            } catch (err) {
+                showError('Cannot connect to API. Make sure server is running.');
+            }
+        };
+
+        async function runScan() {
+            console.log('Starting scan...');
+            hideError();
+            
+            const statusEl = document.getElementById('status');
+            const progressEl = document.getElementById('progressContainer');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            
+            try {
+                // Update UI
+                statusEl.textContent = 'Starting...';
+                statusEl.className = 'status running';
+                progressEl.style.display = 'block';
+                
+                // Start scan - using full URL for API
+                const response = await fetch('http://localhost:8000/api/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        feed: 'iex',
+                        bypass_regime: false
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Scan started:', data);
+                
+                const runId = data.run_id;
+                statusEl.textContent = 'Scanning...';
+                
+                // Poll for progress (simpler than WebSocket for testing)
+                let attempts = 0;
+                const maxAttempts = 30;
+                
+                const pollInterval = setInterval(async () => {
+                    attempts++;
+                    
+                    try {
+                        const statusResponse = await fetch(`http://localhost:8000/api/scan/${runId}/status`);
+                        const status = await statusResponse.json();
+                        
+                        console.log('Status:', status);
+                        
+                        // Update progress
+                        if (status.progress) {
+                            const pct = (status.progress.done / status.progress.total) * 100;
+                            progressFill.style.width = `${pct}%`;
+                            progressText.textContent = `${status.progress.done} / ${status.progress.total} tickers`;
+                        }
+                        
+                        // Check if done
+                        if (status.state === 'done' || status.state === 'error' || attempts >= maxAttempts) {
+                            clearInterval(pollInterval);
+                            
+                            if (status.state === 'done') {
+                                await loadResults(runId);
+                            } else if (status.state === 'error') {
+                                showError('Scan failed');
+                            } else {
+                                showError('Scan timeout');
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Poll error:', err);
+                        clearInterval(pollInterval);
+                        showError('Lost connection to scan');
+                    }
+                }, 500); // Poll every 500ms
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError(error.message);
+                statusEl.textContent = 'Error';
+                statusEl.className = 'status';
+            }
+        }
+        
+        async function loadResults(runId) {
+            try {
+                const response = await fetch(`http://localhost:8000/api/scan/${runId}/results`);
+                const data = await response.json();
+                
+                console.log('Results loaded:', data);
+                
+                // Update UI
+                document.getElementById('status').textContent = `Done - ${data.results.length} results`;
+                document.getElementById('status').className = 'status done';
+                document.getElementById('progressContainer').style.display = 'none';
+                
+                // Display results
+                const tbody = document.getElementById('resultsBody');
+                tbody.innerHTML = '';
+                
+                data.results.forEach(r => {
+                    const row = tbody.insertRow();
+                    row.insertCell(0).innerHTML = `<strong>${r.symbol}</strong>`;
+                    row.insertCell(1).textContent = `$${r.close.toFixed(2)}`;
+                    row.insertCell(2).textContent = r.score.toFixed(2);
+                    row.insertCell(3).textContent = r.rsi14.toFixed(1);
+                    row.insertCell(4).textContent = `${r.gap_percent.toFixed(1)}%`;
+                });
+                
+                document.getElementById('resultsTable').style.display = 'table';
+                
+            } catch (error) {
+                console.error('Error loading results:', error);
+                showError('Failed to load results');
+            }
+        }
+        
+        function showError(message) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = '❌ ' + message;
+            errorEl.style.display = 'block';
+        }
+        
+        function hideError() {
+            document.getElementById('error').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

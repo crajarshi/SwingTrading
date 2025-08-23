@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SwingTrading Test - Minimal Working Version</title>
+    <style>
+        body { font-family: system-ui; padding: 20px; }
+        button { padding: 10px 20px; margin: 10px; cursor: pointer; }
+        .status { padding: 5px 10px; background: #f0f0f0; border-radius: 5px; }
+        #results { margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>SwingTrading Scanner - Working Test</h1>
+    
+    <div>
+        <button id="runBtn" onclick="runScan()">Run Scan</button>
+        <span id="status" class="status">Ready</span>
+    </div>
+    
+    <div id="progress" style="display:none;">
+        <progress id="progressBar" max="100" value="0"></progress>
+        <span id="progressText">0/0</span>
+    </div>
+    
+    <div id="results">
+        <table id="resultsTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Price</th>
+                    <th>Score</th>
+                    <th>RSI</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        // Test connection on load
+        fetch('http://localhost:8000/api/config')
+            .then(r => r.json())
+            .then(data => {
+                console.log('✅ API Connected:', data);
+                document.getElementById('status').textContent = 'Ready (API OK)';
+            })
+            .catch(err => {
+                console.error('❌ API Error:', err);
+                document.getElementById('status').textContent = 'API Error';
+            });
+
+        async function runScan() {
+            console.log('Starting scan...');
+            document.getElementById('status').textContent = 'Starting...';
+            
+            try {
+                // Start scan
+                const response = await fetch('http://localhost:8000/api/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({feed: 'iex'})
+                });
+                
+                const data = await response.json();
+                console.log('Scan started:', data);
+                
+                // Update UI
+                document.getElementById('status').textContent = 'Scanning...';
+                document.getElementById('progress').style.display = 'block';
+                
+                // Connect WebSocket
+                connectWebSocket(data.run_id);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('status').textContent = 'Error!';
+            }
+        }
+        
+        function connectWebSocket(runId) {
+            const ws = new WebSocket(`ws://localhost:8000/ws/scan/${runId}`);
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Progress:', data);
+                
+                // Update progress
+                if (data.progress) {
+                    const pct = (data.progress.done / data.progress.total) * 100;
+                    document.getElementById('progressBar').value = pct;
+                    document.getElementById('progressText').textContent = 
+                        `${data.progress.done}/${data.progress.total}`;
+                }
+                
+                // Check if done
+                if (data.state === 'done') {
+                    loadResults(runId);
+                }
+            };
+        }
+        
+        async function loadResults(runId) {
+            const response = await fetch(`http://localhost:8000/api/scan/${runId}/results`);
+            const data = await response.json();
+            
+            console.log('Results:', data);
+            document.getElementById('status').textContent = 'Complete!';
+            document.getElementById('progress').style.display = 'none';
+            
+            // Display results
+            const tbody = document.getElementById('resultsBody');
+            tbody.innerHTML = '';
+            
+            data.results.forEach(r => {
+                const row = tbody.insertRow();
+                row.insertCell(0).textContent = r.symbol;
+                row.insertCell(1).textContent = `$${r.close.toFixed(2)}`;
+                row.insertCell(2).textContent = r.score.toFixed(2);
+                row.insertCell(3).textContent = r.rsi14.toFixed(1);
+            });
+            
+            document.getElementById('resultsTable').style.display = 'table';
+        }
+    </script>
+</body>
+</html>

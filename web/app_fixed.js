@@ -116,45 +116,51 @@ async function cancelScan() {
     }
 }
 
-// Connect WebSocket for real-time updates
+// Use polling instead of WebSocket (simpler, more reliable)
 function connectWebSocket(runId) {
-    const wsUrl = `ws://localhost:8000/ws/scan/${runId}`;
-    console.log('Connecting WebSocket:', wsUrl);
+    console.log('Starting progress polling for:', runId);
     
-    state.ws = new WebSocket(wsUrl);
+    let attempts = 0;
+    const maxAttempts = 30;
     
-    state.ws.onopen = () => {
-        console.log('WebSocket connected');
-    };
-    
-    state.ws.onmessage = (event) => {
-        const update = JSON.parse(event.data);
-        console.log('Progress update:', update);
+    const pollInterval = setInterval(async () => {
+        attempts++;
         
-        // Update progress display
-        if (update.progress) {
-            updateProgressBar(update.progress.done, update.progress.total);
-        }
-        
-        // Handle completion
-        if (update.state === 'done') {
-            console.log('Scan complete!');
-            loadResults(runId);
-            updateStatus('done');
-            showToast(`Scan complete • ${update.progress.partial_results} results`, 'success');
-        } else if (update.state === 'error') {
+        try {
+            const response = await fetch(`http://localhost:8000/api/scan/${runId}/status`);
+            const status = await response.json();
+            
+            console.log('Status update:', status);
+            
+            // Update progress display
+            if (status.progress) {
+                updateProgressBar(status.progress.done, status.progress.total);
+            }
+            
+            // Handle completion
+            if (status.state === 'done' || status.state === 'error' || attempts >= maxAttempts) {
+                clearInterval(pollInterval);
+                
+                if (status.state === 'done') {
+                    console.log('Scan complete!');
+                    loadResults(runId);
+                    updateStatus('done');
+                    showToast(`Scan complete • ${status.progress.partial_results} results`, 'success');
+                } else if (status.state === 'error') {
+                    updateStatus('error');
+                    showToast('Scan failed', 'error');
+                } else if (attempts >= maxAttempts) {
+                    updateStatus('error');
+                    showToast('Scan timeout', 'error');
+                }
+            }
+        } catch (error) {
+            console.error('Poll error:', error);
+            clearInterval(pollInterval);
             updateStatus('error');
-            showToast('Scan failed', 'error');
+            showToast('Lost connection to scan', 'error');
         }
-    };
-    
-    state.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-    };
-    
-    state.ws.onclose = () => {
-        console.log('WebSocket closed');
-    };
+    }, 500); // Poll every 500ms
 }
 
 // Load and display results
@@ -197,19 +203,77 @@ function displayResults() {
         tableWrapper.style.display = 'block';
     }
     
-    // Add rows
+    // Add rows with actionable signals
     state.results.forEach(result => {
         const row = document.createElement('tr');
+        
+        // Determine action style
+        let actionClass = '';
+        let actionIcon = '';
+        if (result.action === 'BUY') {
+            actionClass = 'action-buy';
+            actionIcon = '🟢';
+        } else if (result.action === 'WATCH') {
+            actionClass = 'action-watch';
+            actionIcon = '👁️';
+        } else if (result.action === 'AVOID') {
+            actionClass = 'action-avoid';
+            actionIcon = '⚠️';
+        }
+        
+        // Build the row with actionable data
         row.innerHTML = `
-            <td class="cell-symbol">${result.symbol}</td>
-            <td>$${result.close.toFixed(2)}</td>
-            <td>${result.score.toFixed(2)}</td>
+            <td class="cell-symbol">
+                <strong>${result.symbol}</strong>
+                <span class="${actionClass}" style="margin-left: 8px;">
+                    ${actionIcon} ${result.action}
+                </span>
+            </td>
+            <td>
+                $${result.close ? result.close.toFixed(2) : 'N/A'}
+                ${result.day_change_pct ? `<span style="color: ${result.day_change_pct > 0 ? 'green' : 'red'}; font-size: 0.9em;">
+                    (${result.day_change_pct > 0 ? '+' : ''}${result.day_change_pct.toFixed(2)}%)
+                </span>` : ''}
+            </td>
+            <td>
+                <strong>${result.score.toFixed(1)}</strong>
+                ${result.signal_strength ? `<br><small>${result.signal_strength}</small>` : ''}
+            </td>
             <td>${result.rsi14.toFixed(1)}</td>
             <td>${result.gap_percent.toFixed(1)}%</td>
-            <td>${(result.volume / 1e6).toFixed(1)}M</td>
-            <td>-</td>
-            <td>-</td>
+            <td>
+                ${result.entry_price ? `
+                    Entry: $${result.entry_price}<br>
+                    Stop: $${result.stop_loss}
+                ` : '-'}
+            </td>
+            <td>
+                ${result.target_1 ? `
+                    T1: $${result.target_1}<br>
+                    T2: $${result.target_2}
+                ` : '-'}
+            </td>
+            <td>
+                ${result.risk_reward || '-'}<br>
+                ${result.position_size ? `<small>${result.position_size}</small>` : ''}
+            </td>
         `;
+        
+        // Add click handler for more details
+        row.style.cursor = 'pointer';
+        row.onclick = () => {
+            alert(`${result.symbol} Trading Plan:\n\n` +
+                  `Action: ${result.action}\n` +
+                  `Current Price: $${result.close}\n` +
+                  `Entry: $${result.entry_price}\n` +
+                  `Stop Loss: $${result.stop_loss} (${((result.stop_loss - result.close) / result.close * 100).toFixed(1)}%)\n` +
+                  `Target 1: $${result.target_1} (+${((result.target_1 - result.close) / result.close * 100).toFixed(1)}%)\n` +
+                  `Target 2: $${result.target_2} (+${((result.target_2 - result.close) / result.close * 100).toFixed(1)}%)\n` +
+                  `Risk/Reward: ${result.risk_reward}\n` +
+                  `Position Size: ${result.position_size}\n\n` +
+                  `Reasoning: ${result.reasoning}`);
+        };
+        
         tbody.appendChild(row);
     });
     
@@ -229,7 +293,7 @@ function updateStatus(status) {
         }[status] || status;
         
         pill.textContent = statusText;
-        pill.className = `status-pill ${status}`;
+        pill.className = `status-badge ${status}`;
     }
     
     // Toggle buttons
@@ -263,9 +327,15 @@ function updateProgressBar(done, total) {
         fill.style.width = `${percent}%`;
     }
     
+    // Update progress text
+    const progressText = document.getElementById('progress-text');
+    if (progressText) {
+        progressText.textContent = `${done} / ${total}`;
+    }
+    
     // Update status pill with progress
     const pill = document.getElementById('status-pill') || document.getElementById('status-badge');
-    if (pill && pill.classList.contains('running')) {
+    if (pill) {
         pill.textContent = `Scanning ${done}/${total}`;
     }
 }

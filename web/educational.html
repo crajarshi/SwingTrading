@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwingTrading Scanner - Educational Mode</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .education-banner {
+            background: #f39c12;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .controls {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #229954;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(39,174,96,0.3);
+        }
+        
+        .btn-help {
+            background: #3498db;
+            color: white;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 8px 20px;
+            background: #ecf0f1;
+            border-radius: 20px;
+            margin-left: 20px;
+        }
+        
+        .knowledge-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+        
+        .knowledge-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .knowledge-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+        
+        .knowledge-card h3 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+        
+        .knowledge-card p {
+            color: #7f8c8d;
+            line-height: 1.6;
+        }
+        
+        .results-section {
+            padding: 30px;
+        }
+        
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .results-summary {
+            display: flex;
+            gap: 30px;
+        }
+        
+        .summary-item {
+            text-align: center;
+        }
+        
+        .summary-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .summary-label {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        th {
+            background: #34495e;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .action-buy {
+            background: #27ae60;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        
+        .action-watch {
+            background: #f39c12;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        
+        .action-avoid {
+            background: #e74c3c;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        
+        .price-change-positive {
+            color: #27ae60;
+            font-size: 0.9em;
+        }
+        
+        .price-change-negative {
+            color: #e74c3c;
+            font-size: 0.9em;
+        }
+        
+        .signal-strength {
+            font-size: 0.85em;
+            color: #7f8c8d;
+            display: block;
+        }
+        
+        .education-tip {
+            background: #fff3cd;
+            border-left: 4px solid #f39c12;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        
+        .education-tip h4 {
+            color: #856404;
+            margin-bottom: 5px;
+        }
+        
+        .education-tip p {
+            color: #856404;
+            line-height: 1.6;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            margin: 50px auto;
+            position: relative;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 30px;
+            cursor: pointer;
+            color: #7f8c8d;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #ecf0f1;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #27ae60, #2ecc71);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            border-bottom: 1px dotted #666;
+            cursor: help;
+        }
+        
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 250px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 10px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -125px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 SwingTrading Scanner</h1>
+            <p class="subtitle">Educational Mode - Learn While You Trade</p>
+        </header>
+        
+        <div class="education-banner">
+            📚 BEGINNER MODE ON - Hover over any term for explanation | Click rows for detailed trade plans
+        </div>
+        
+        <div class="controls">
+            <div>
+                <button id="scanBtn" class="btn btn-primary" onclick="startScan()">
+                    🔍 Run Live Scan
+                </button>
+                <span id="status" class="status">Ready</span>
+            </div>
+            <div>
+                <button class="btn btn-help" onclick="showHelp()">
+                    📖 Trading Guide
+                </button>
+            </div>
+        </div>
+        
+        <!-- Knowledge Cards -->
+        <div class="knowledge-cards" id="knowledgeCards">
+            <div class="knowledge-card" onclick="showTopic('what_is_swing_trading')">
+                <h3>🎯 What is Swing Trading?</h3>
+                <p>Learn the basics - hold stocks 2-10 days for 3-8% gains</p>
+            </div>
+            
+            <div class="knowledge-card" onclick="showTopic('understanding_signals')">
+                <h3>🚦 Understanding Signals</h3>
+                <p>What BUY, WATCH, and AVOID really mean</p>
+            </div>
+            
+            <div class="knowledge-card" onclick="showTopic('reading_the_scores')">
+                <h3>📊 Score Meanings</h3>
+                <p>Why 20+ is exceptional and <5 means skip</p>
+            </div>
+            
+            <div class="knowledge-card" onclick="showTopic('key_indicators')">
+                <h3>📈 Key Indicators</h3>
+                <p>RSI, Gap%, Entry, Stop Loss explained simply</p>
+            </div>
+            
+            <div class="knowledge-card" onclick="showTopic('how_to_execute')">
+                <h3>💰 How to Execute</h3>
+                <p>Step-by-step from signal to profit</p>
+            </div>
+            
+            <div class="knowledge-card" onclick="showTopic('position_sizing')">
+                <h3>💵 Position Sizing</h3>
+                <p>How much money to put in each trade</p>
+            </div>
+            
+            <div class="knowledge-card" onclick="showTopic('risk_management')">
+                <h3>🛡️ Risk Management</h3>
+                <p>Protect your capital - don't blow up!</p>
+            </div>
+            
+            <div class="knowledge-card" onclick="showTopic('common_mistakes')">
+                <h3>❌ Common Mistakes</h3>
+                <p>Avoid these 5 beginner errors</p>
+            </div>
+        </div>
+        
+        <!-- Progress Bar -->
+        <div id="progressContainer" style="display:none; padding: 0 30px;">
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill" style="width: 0%">
+                    <span id="progressText">Scanning...</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection" style="display:none;">
+            <div class="results-header">
+                <h2>📊 Scan Results - Real Market Prices</h2>
+                <div class="results-summary">
+                    <div class="summary-item">
+                        <div class="summary-number" id="buyCount">0</div>
+                        <div class="summary-label">BUY Signals</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-number" id="watchCount">0</div>
+                        <div class="summary-label">WATCH List</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-number" id="avoidCount">0</div>
+                        <div class="summary-label">AVOID</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="education-tip">
+                <h4>💡 Beginner Tip:</h4>
+                <p id="beginnerTip">Start with just 1-2 BUY signals. Paper trade first to practice without risk!</p>
+            </div>
+            
+            <table id="resultsTable">
+                <thead>
+                    <tr>
+                        <th>Symbol / Action</th>
+                        <th>Current Price</th>
+                        <th>
+                            <span class="tooltip">Score
+                                <span class="tooltiptext">Higher score = Better setup. 15+ is strong buy signal</span>
+                            </span>
+                        </th>
+                        <th>
+                            <span class="tooltip">RSI
+                                <span class="tooltiptext">Under 30 = Oversold (bounce likely). Over 70 = Overbought (avoid)</span>
+                            </span>
+                        </th>
+                        <th>Entry / Stop</th>
+                        <th>Targets</th>
+                        <th>Risk/Reward</th>
+                        <th>Position Size</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                    <!-- Results will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Educational Modal -->
+    <div id="educationModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">Loading...</h2>
+            <div id="modalContent">
+                <!-- Content loaded dynamically -->
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let knowledgeBase = {};
+        let currentResults = [];
+        
+        // Load knowledge base on startup
+        window.onload = async function() {
+            try {
+                const response = await fetch('http://localhost:8000/api/knowledge');
+                knowledgeBase = await response.json();
+                console.log('Knowledge base loaded');
+            } catch (error) {
+                console.error('Failed to load knowledge base:', error);
+            }
+        };
+        
+        async function startScan() {
+            console.log('Starting educational scan...');
+            
+            // Update UI
+            document.getElementById('status').textContent = 'Scanning...';
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('knowledgeCards').style.display = 'none';
+            
+            try {
+                // Start scan
+                const response = await fetch('http://localhost:8000/api/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                console.log('Scan started:', data);
+                
+                // Poll for progress
+                pollProgress(data.run_id);
+                
+            } catch (error) {
+                console.error('Scan failed:', error);
+                document.getElementById('status').textContent = 'Error';
+            }
+        }
+        
+        function pollProgress(runId) {
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch(`http://localhost:8000/api/scan/${runId}/status`);
+                    const status = await response.json();
+                    
+                    // Update progress bar
+                    if (status.progress) {
+                        const pct = (status.progress.done / status.progress.total) * 100;
+                        document.getElementById('progressFill').style.width = pct + '%';
+                        document.getElementById('progressText').textContent = 
+                            `Scanning ${status.progress.done}/${status.progress.total} stocks...`;
+                    }
+                    
+                    // Check if done
+                    if (status.state === 'done') {
+                        clearInterval(interval);
+                        loadResults(runId);
+                    }
+                } catch (error) {
+                    console.error('Progress error:', error);
+                    clearInterval(interval);
+                }
+            }, 500);
+        }
+        
+        async function loadResults(runId) {
+            try {
+                const response = await fetch(`http://localhost:8000/api/scan/${runId}/results`);
+                const data = await response.json();
+                
+                console.log('Results loaded:', data);
+                currentResults = data.results;
+                
+                // Update UI
+                document.getElementById('status').textContent = 'Scan Complete';
+                document.getElementById('progressContainer').style.display = 'none';
+                document.getElementById('resultsSection').style.display = 'block';
+                
+                // Update summary
+                let buyCount = 0, watchCount = 0, avoidCount = 0;
+                
+                // Display results
+                const tbody = document.getElementById('resultsBody');
+                tbody.innerHTML = '';
+                
+                data.results.forEach(result => {
+                    if (result.action === 'BUY') buyCount++;
+                    else if (result.action === 'WATCH') watchCount++;
+                    else avoidCount++;
+                    
+                    const row = document.createElement('tr');
+                    row.style.cursor = 'pointer';
+                    
+                    const actionClass = result.action === 'BUY' ? 'action-buy' : 
+                                       result.action === 'WATCH' ? 'action-watch' : 'action-avoid';
+                    
+                    const changeClass = result.day_change_pct > 0 ? 'price-change-positive' : 'price-change-negative';
+                    
+                    row.innerHTML = `
+                        <td>
+                            <strong>${result.symbol}</strong>
+                            <span class="${actionClass}">${result.action}</span>
+                        </td>
+                        <td>
+                            $${result.current_price.toFixed(2)}
+                            <span class="${changeClass}">
+                                (${result.day_change_pct > 0 ? '+' : ''}${result.day_change_pct.toFixed(2)}%)
+                            </span>
+                        </td>
+                        <td>
+                            <strong>${result.score.toFixed(1)}</strong>
+                            <span class="signal-strength">${result.signal_strength || ''}</span>
+                        </td>
+                        <td>${result.rsi14.toFixed(1)}</td>
+                        <td>
+                            ${result.entry_price ? `
+                                Entry: $${result.entry_price}<br>
+                                Stop: $${result.stop_loss}
+                            ` : 'N/A'}
+                        </td>
+                        <td>
+                            ${result.target_1 ? `
+                                T1: $${result.target_1}<br>
+                                T2: $${result.target_2}
+                            ` : 'N/A'}
+                        </td>
+                        <td>${result.risk_reward || 'N/A'}</td>
+                        <td>${result.position_size || 'N/A'}</td>
+                    `;
+                    
+                    row.onclick = () => showTradeDetails(result);
+                    tbody.appendChild(row);
+                });
+                
+                // Update counts
+                document.getElementById('buyCount').textContent = buyCount;
+                document.getElementById('watchCount').textContent = watchCount;
+                document.getElementById('avoidCount').textContent = avoidCount;
+                
+                // Update tip
+                if (data.education && data.education.beginner_tip) {
+                    document.getElementById('beginnerTip').textContent = data.education.beginner_tip;
+                }
+                
+            } catch (error) {
+                console.error('Failed to load results:', error);
+            }
+        }
+        
+        function showTradeDetails(result) {
+            let content = `
+                <h3>📊 Complete Trade Plan</h3>
+                <p><strong>Current Price:</strong> $${result.current_price.toFixed(2)}</p>
+                <p><strong>Action:</strong> ${result.action}</p>
+                <p><strong>Signal Strength:</strong> ${result.signal_strength || 'N/A'}</p>
+                <hr>
+            `;
+            
+            if (result.action === 'BUY') {
+                const stopLossPct = ((result.stop_loss - result.current_price) / result.current_price * 100).toFixed(1);
+                const target1Pct = ((result.target_1 - result.current_price) / result.current_price * 100).toFixed(1);
+                const target2Pct = ((result.target_2 - result.current_price) / result.current_price * 100).toFixed(1);
+                
+                content += `
+                    <h4>📍 Entry Strategy:</h4>
+                    <p>Buy at: $${result.entry_price} (when price shows upward momentum)</p>
+                    
+                    <h4>🛑 Risk Management:</h4>
+                    <p>Stop Loss: $${result.stop_loss} (${stopLossPct}% risk)</p>
+                    
+                    <h4>🎯 Profit Targets:</h4>
+                    <p>Target 1: $${result.target_1} (+${target1Pct}%) - Sell 50% here</p>
+                    <p>Target 2: $${result.target_2} (+${target2Pct}%) - Sell remaining</p>
+                    
+                    <h4>💰 Position Sizing:</h4>
+                    <p>Invest: ${result.position_size} of your portfolio</p>
+                    <p>Risk/Reward: ${result.risk_reward}</p>
+                `;
+            }
+            
+            if (result.education) {
+                content += `
+                    <hr>
+                    <h4>📚 Why This Trade?</h4>
+                    <p>${result.education.why_buy || result.education.why_watch || result.education.why_avoid}</p>
+                    <p><strong>Entry Logic:</strong> ${result.education.entry_logic}</p>
+                    <p><strong>Risk Logic:</strong> ${result.education.risk_logic}</p>
+                    <p><strong>Trade Plan:</strong> ${result.education.trade_plan}</p>
+                `;
+            }
+            
+            document.getElementById('modalTitle').textContent = `${result.symbol} - Trading Plan`;
+            document.getElementById('modalContent').innerHTML = content;
+            document.getElementById('educationModal').style.display = 'block';
+        }
+        
+        function showTopic(topicKey) {
+            const topic = knowledgeBase[topicKey];
+            if (topic) {
+                document.getElementById('modalTitle').textContent = topic.title;
+                document.getElementById('modalContent').innerHTML = `<pre style="white-space: pre-wrap; font-family: inherit;">${topic.content}</pre>`;
+                document.getElementById('educationModal').style.display = 'block';
+            }
+        }
+        
+        function showHelp() {
+            showTopic('what_is_swing_trading');
+        }
+        
+        function closeModal() {
+            document.getElementById('educationModal').style.display = 'none';
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('educationModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

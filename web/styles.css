@@ -95,8 +95,8 @@ body {
     gap: var(--spacing-md);
 }
 
-/* Status Pill */
-.status-pill {
+/* Status Badge */
+.status-badge {
     padding: var(--spacing-xs) var(--spacing-lg);
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -106,19 +106,19 @@ body {
     color: var(--color-text-muted);
 }
 
-.status-pill.running {
+.status-badge.running {
     background: var(--color-warning);
     color: white;
     border-color: var(--color-warning);
 }
 
-.status-pill.done {
+.status-badge.done {
     background: var(--color-success);
     color: white;
     border-color: var(--color-success);
 }
 
-.status-pill.error {
+.status-badge.error {
     background: var(--color-danger);
     color: white;
     border-color: var(--color-danger);
