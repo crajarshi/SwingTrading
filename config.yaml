@@ -1,0 +1,116 @@
+# SwingTrading Scanner Configuration
+
+universe:
+  tickers:
+    - SPY
+    - QQQ
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - NVDA
+    - META
+    - TSLA
+    - JPM
+    - V
+    - JNJ
+    - WMT
+    - PG
+    - MA
+    - UNH
+    - HD
+    - DIS
+    - BAC
+    - XOM
+
+data:
+  # API Configuration
+  api_key_env: "ALPACA_API_KEY"
+  api_secret_env: "ALPACA_API_SECRET"
+  base_url: "https://data.alpaca.markets"
+  feed: "iex"  # 'iex' for free tier, 'sip' for paid subscription
+  timezone: "America/New_York"
+  
+  # Data Requirements
+  days_history: 252  # One year of daily bars
+  min_bars_required: 100  # Minimum bars needed for indicators
+  
+  # Rate Limiting
+  rate_limit_per_minute: 190  # Stay under Alpaca's 200/min limit
+  rate_limit_start_full: false  # Start with empty bucket (safer for first run)
+  
+  # Concurrency
+  max_workers: 10  # Parallel ticker processing
+  task_timeout: 30  # Seconds per ticker scan
+
+cache:
+  enabled: true
+  directory: "cache"  # Directory for parquet cache files
+
+filters:
+  # Price Filters
+  min_price: 5.0  # Minimum stock price
+  penny_threshold: 1.0  # Penny stock threshold
+  
+  # Liquidity Filter
+  min_dollar_volume_10d_avg: 5000000  # $5M average daily dollar volume
+  
+  # Volatility Filters
+  min_atr_ratio: 0.01  # ATR/price ratio (1% minimum daily movement)
+  max_gap_percent: 15.0  # Maximum overnight gap percentage
+  
+  # Leveraged ETF Patterns (case-insensitive)
+  leveraged_etf_patterns:
+    - TQQQ
+    - SQQQ
+    - SPXL
+    - SPXS
+    - SOXL
+    - SOXS
+    - UVXY
+    - SVXY
+    - UPRO
+    - SPXU
+    - LABU
+    - LABD
+    - TNA
+    - TZA
+    - FAS
+    - FAZ
+    - NUGT
+    - DUST
+    - JNUG
+    - JDST
+
+indicators:
+  # Technical Indicator Periods
+  atr_period: 20
+  rsi_period: 14
+  sma_short: 20
+  sma_long: 50
+  volume_avg_period: 10
+
+scoring:
+  # Scoring weights (should sum to ~1.0)
+  weights:
+    pullback_proximity: 0.30  # Distance from 20-day high
+    trend_strength: 0.25      # Price above SMA(50)
+    rsi_headroom: 0.25        # Room to rise from current RSI
+    volume_ratio: 0.20        # Current vs average volume
+
+output:
+  # CSV column configuration (session_date will be the index)
+  csv_columns:
+    - symbol
+    - close
+    - volume
+    - dollar_volume_10d_avg
+    - atr20
+    - rsi14
+    - gap_percent
+    - score
+
+regime:
+  # Market regime filter
+  check_spy: true
+  spy_rsi_threshold: 30  # Skip scan if SPY RSI(14) < 30

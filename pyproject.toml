@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swingtrading"
+version = "1.0.0"
+description = "Production-ready swing trading scanner for market analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "SwingTrading Team", email = "admin@example.com"}
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "alpaca-py==0.13.3",
+    "pandas==2.1.4",
+    "numpy==1.24.4",
+    "pyarrow==14.0.2",
+    "python-dotenv==1.0.0",
+    "pytz==2024.1",
+    "pyyaml==6.0.1",
+    "typer==0.9.0",
+    "rich==13.7.0",
+]
+
+[project.scripts]
+swing-scan = "swingtrading.main:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest==7.4.4",
+    "pytest-cov==4.1.0",
+    "black==23.12.1",
+    "mypy==1.8.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
