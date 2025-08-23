@@ -186,10 +186,19 @@ function markDirty() {
     btn.textContent = 'Apply & Re-Run';
     btn.classList.add('edited');
     
+    // Show edited badge
+    const editedBadge = document.getElementById('edited-badge');
+    if (editedBadge) {
+        editedBadge.style.display = 'inline-block';
+    }
+    
     // Show edited overlay if results exist
     if (state.results.length > 0) {
-        document.getElementById('edited-overlay').style.display = 'block';
-        document.getElementById('results-container').classList.add('dimmed');
+        const overlay = document.getElementById('edited-overlay');
+        if (overlay) overlay.style.display = 'block';
+        
+        const container = document.getElementById('results-container');
+        if (container) container.classList.add('dimmed');
     }
 }
 
@@ -199,8 +208,17 @@ function clearDirty() {
     btn.textContent = 'Run Scan';
     btn.classList.remove('edited');
     
-    document.getElementById('edited-overlay').style.display = 'none';
-    document.getElementById('results-container').classList.remove('dimmed');
+    // Hide edited badge
+    const editedBadge = document.getElementById('edited-badge');
+    if (editedBadge) {
+        editedBadge.style.display = 'none';
+    }
+    
+    const overlay = document.getElementById('edited-overlay');
+    if (overlay) overlay.style.display = 'none';
+    
+    const container = document.getElementById('results-container');
+    if (container) container.classList.remove('dimmed');
 }
 
 function getControls() {
@@ -454,18 +472,26 @@ function startPolling(runId) {
 function handleProgressUpdate(update) {
     // Update progress bar
     const progress = update.progress;
-    updateProgress(progress.done, progress.total, progress.partial_results);
+    updateProgress(progress.done, progress.total, progress.partial_results, update.current_ticker);
     
     // Handle state changes
     if (update.state === 'done') {
         updateRunStatus('done');
         loadResults(update.run_id);
-        showToast(`Scan complete • ${progress.partial_results} results`, 'success');
+        const runtime = update.elapsed_ms ? ` • ${(update.elapsed_ms / 1000).toFixed(1)}s` : '';
+        showToast(`Scan complete • ${progress.partial_results} results${runtime}`, 'success');
+        
+        // Update status pill with final results
+        const pill = document.getElementById('status-pill') || document.getElementById('status-badge');
+        if (pill) {
+            pill.textContent = `Done • ${progress.partial_results} results`;
+        }
     } else if (update.state === 'error') {
         updateRunStatus('error');
         handleScanError(update.error);
     } else if (update.state === 'canceled') {
         updateRunStatus('canceled');
+        showToast('Scan canceled. No changes saved.', 'warning');
     }
 }
 
@@ -639,33 +665,64 @@ function closeDetailDrawer() {
 // ============================================================================
 
 function updateRunStatus(status) {
-    const badge = document.getElementById('status-badge');
+    const pill = document.getElementById('status-pill') || document.getElementById('status-badge');
     const runBtn = document.getElementById('run-btn');
     const cancelBtn = document.getElementById('cancel-btn');
     
-    badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-    badge.className = `status-badge ${status}`;
+    // Update status pill with better microcopy
+    const statusText = {
+        'idle': 'Ready to scan',
+        'running': 'Scanning...',
+        'done': 'Scan complete',
+        'canceled': 'Scan canceled',
+        'error': 'Scan failed'
+    };
+    
+    if (pill) {
+        pill.textContent = statusText[status] || status;
+        pill.className = `status-pill ${status}`;
+    }
     
     if (status === 'running') {
         runBtn.style.display = 'none';
         cancelBtn.style.display = 'inline-flex';
+        showProgressBar(true);
     } else {
         runBtn.style.display = 'inline-flex';
         cancelBtn.style.display = 'none';
+        if (status !== 'done') {
+            showProgressBar(false);
+        }
     }
 }
 
 function showProgressBar(show) {
-    document.getElementById('progress-container').style.display = show ? 'block' : 'none';
+    const container = document.getElementById('progress-bar-container') || document.getElementById('progress-container');
+    if (container) {
+        container.style.display = show ? 'block' : 'none';
+    }
 }
 
-function updateProgress(done, total, partialResults) {
-    const fill = document.getElementById('progress-fill');
-    const text = document.getElementById('progress-text');
+function updateProgress(done, total, partialResults, currentTicker) {
+    // Update top progress bar
+    const progressBar = document.getElementById('progress-bar-fill') || document.getElementById('progress-fill');
+    if (progressBar) {
+        const percentage = total > 0 ? (done / total) * 100 : 0;
+        progressBar.style.width = `${percentage}%`;
+    }
     
-    const percentage = total > 0 ? (done / total) * 100 : 0;
-    fill.style.width = `${percentage}%`;
-    text.textContent = `${done} / ${total}${partialResults ? ` (${partialResults} results)` : ''}`;
+    // Update status pill with progress
+    const pill = document.getElementById('status-pill') || document.getElementById('status-badge');
+    if (pill && pill.classList.contains('running')) {
+        const ticker = currentTicker ? ` • ${currentTicker}` : '';
+        pill.textContent = `Scanning ${done}/${total}${ticker}`;
+    }
+    
+    // Update old progress text if it exists
+    const text = document.getElementById('progress-text');
+    if (text) {
+        text.textContent = `${done} / ${total}${partialResults ? ` (${partialResults} results)` : ''}`;
+    }
 }
 
 function updateRunHeader() {
@@ -755,27 +812,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('run-btn').addEventListener('click', startScan);
     document.getElementById('cancel-btn').addEventListener('click', cancelScan);
     
-    // Export button
-    document.getElementById('export-btn').addEventListener('click', async () => {
-        if (state.activeRun) {
-            window.open(`${api.baseURL}/api/export/${state.activeRun.run_id}/csv`);
-        }
-    });
+    // Export dropdown buttons
+    const exportCsvBtn = document.getElementById('export-csv-btn');
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', async () => {
+            if (state.activeRun) {
+                window.open(`${api.baseURL}/api/export/${state.activeRun.run_id}/csv`);
+            }
+        });
+    }
     
-    // CLI button
-    document.getElementById('cli-btn').addEventListener('click', async () => {
-        if (state.activeRun) {
-            const controls = getControls();
-            const response = await api.get(`/api/cli/${state.activeRun.run_id}?overrides=${encodeURIComponent(JSON.stringify(controls))}`);
-            navigator.clipboard.writeText(response.command);
-            showToast('CLI command copied to clipboard', 'success');
-        }
-    });
+    // Copy CLI button
+    const copyCliBtn = document.getElementById('copy-cli-btn');
+    if (copyCliBtn) {
+        copyCliBtn.addEventListener('click', async () => {
+            if (state.activeRun) {
+                const controls = getControls();
+                const response = await api.get(`/api/cli/${state.activeRun.run_id}?overrides=${encodeURIComponent(JSON.stringify(controls))}`);
+                navigator.clipboard.writeText(response.command);
+                showToast('CLI command copied to clipboard', 'success');
+            }
+        });
+    }
     
-    // Help button
-    document.getElementById('help-btn').addEventListener('click', () => {
-        document.getElementById('help-overlay').style.display = 'flex';
-    });
+    // Help button (now in dropdown)
+    const helpBtn = document.getElementById('help-btn');
+    if (helpBtn) {
+        helpBtn.addEventListener('click', () => {
+            const overlay = document.getElementById('help-overlay');
+            if (overlay) overlay.style.display = 'flex';
+        });
+    }
     
     // Detail drawer close
     document.getElementById('drawer-close').addEventListener('click', closeDetailDrawer);

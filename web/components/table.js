@@ -1,0 +1,1 @@
+// Table component stub - functionality is in app.js

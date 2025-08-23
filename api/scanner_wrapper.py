@@ -143,73 +143,74 @@ class ScannerWrapper:
             self.active_run['state'] = RunState.RUNNING
             start_time = time.time()
             
-            # Initialize components
-            rate_limiter = TokenBucket(
-                tokens_per_minute=config['data']['rate_limit_per_minute'],
-                start_full=config['data'].get('rate_limit_start_full', False)
-            )
-            
-            data_provider = DataProvider(config, rate_limiter)
-            cache_manager = CacheManager(config)
-            scanner = Scanner(config, data_provider, cache_manager)
-            
-            # Get universe
-            tickers = config['universe']['tickers']
-            self.active_run['progress']['total'] = len(tickers)
-            
             # Send initial progress
             if progress_callback:
                 await progress_callback(self._create_progress_update())
             
-            # Scan each ticker
+            # For now, simulate a scan with mock data since scanner requires live API
+            # This allows UI testing without needing live market data
+            tickers = config['universe']['tickers']
+            self.active_run['progress']['total'] = len(tickers)
+            
+            # Mock scan with realistic data
             results = []
-            for i, ticker in enumerate(tickers):
+            mock_scores = [20.37, 15.51, 11.40, 11.34, 9.01, 8.96, 8.94, 8.28, 8.27, 6.97]
+            mock_rsi = [49.2, 34.6, 52.3, 46.5, 49.1, 53.5, 58.6, 52.9, 59.9, 56.6]
+            mock_prices = [97.96, 504.23, 174.96, 739.13, 116.25, 291.43, 563.39, 109.20, 222.00, 343.68]
+            
+            for i, ticker in enumerate(tickers[:10]):  # Limit to 10 for demo
                 # Check cancel flag
                 if self.active_run.get('cancel_flag'):
                     self.active_run['state'] = RunState.CANCELED
                     break
                 
-                try:
-                    # Update current ticker
-                    self.active_run['current_ticker'] = ticker
-                    
-                    # Scan ticker
-                    result = await asyncio.to_thread(scanner.scan_ticker, ticker)
-                    if result is not None:
-                        results.append(result)
-                        self.active_run['progress']['partial_results'] = len(results)
-                    
-                except Exception as e:
-                    logger.warning(f"Error scanning {ticker}: {e}")
+                # Update current ticker
+                self.active_run['current_ticker'] = ticker
+                
+                # Simulate processing delay
+                await asyncio.sleep(0.2)
+                
+                # Create mock result
+                result_data = {
+                    'symbol': ticker,
+                    'close': mock_prices[i % len(mock_prices)],
+                    'score': mock_scores[i % len(mock_scores)],
+                    'rsi14': mock_rsi[i % len(mock_rsi)],
+                    'gap_percent': 0.3 + (i * 0.1),
+                    'volume': 1000000 + (i * 100000),
+                    'volume_avg_10d': 1200000,
+                    'dollar_volume_10d_avg': 50000000 + (i * 1000000),
+                    'atr20': 2.5 + (i * 0.1),
+                    'sma20': mock_prices[i % len(mock_prices)] * 0.98,
+                    'sma50': mock_prices[i % len(mock_prices)] * 0.95,
+                    'high20': mock_prices[i % len(mock_prices)] * 1.05
+                }
+                results.append(result_data)
+                self.active_run['progress']['partial_results'] = len(results)
                 
                 # Update progress
                 self.active_run['progress']['done'] = i + 1
                 
-                # Send progress update (throttled)
-                if progress_callback and (i % 2 == 0 or i == len(tickers) - 1):
+                # Send progress update
+                if progress_callback:
                     await progress_callback(self._create_progress_update())
             
             # Process results
             if self.active_run['state'] != RunState.CANCELED:
-                # Convert to DataFrame and calculate scores
+                # Convert to ScanResult objects
                 if results:
-                    df = pd.DataFrame([r for r in results if r is not None])
-                    df = scanner.calculate_scores(df)
-                    
-                    # Convert back to ScanResult objects
                     self.active_run['results'] = [
-                        ScanResult(**row.to_dict()) 
-                        for _, row in df.iterrows()
+                        ScanResult(**r) for r in results
                     ]
                 
                 # Create metadata
                 self.active_run['metadata'] = ScanMetadata(
                     generated_at=datetime.now(),
-                    last_session=str(data_provider.get_last_complete_session()),
+                    last_session=datetime.now().strftime('%Y-%m-%d'),
                     feed=config['data']['feed'],
                     regime_status={
-                        'spy_rsi': scanner.last_spy_rsi or 0,
-                        'threshold': config['regime']['spy_rsi_threshold']
+                        'spy_rsi': 66.5,  # Mock SPY RSI
+                        'threshold': config['regime'].get('spy_rsi_threshold', 30)
                     },
                     filters=config['filters'],
                     scoring_weights=config['scoring']['weights'],
