@@ -116,11 +116,21 @@
         
         .modal-content {
             background: white;
-            width: 500px;
-            margin: 100px auto;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            overflow-y: auto;
+            margin: 50px auto;
             padding: 30px;
             border-radius: 10px;
             position: relative;
+        }
+        
+        #topic-content {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
         }
         
         .close {
@@ -132,21 +142,36 @@
         }
         
         .knowledge-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            display: flex;
+            flex-wrap: wrap;
             gap: 15px;
             margin: 20px 0;
         }
         
         .knowledge-card {
+            flex: 1 1 calc(50% - 15px);
+            min-width: 200px;
             padding: 15px;
             background: #ecf0f1;
             border-radius: 8px;
             cursor: pointer;
+            transition: all 0.3s;
         }
         
         .knowledge-card:hover {
-            background: #bdc3c7;
+            background: #3498db;
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .knowledge-card h4 {
+            margin: 0 0 5px 0;
+        }
+        
+        .knowledge-card p {
+            margin: 0;
+            font-size: 0.9em;
+            opacity: 0.8;
         }
     </style>
 </head>
@@ -201,14 +226,27 @@
             <span class="close" onclick="closeHelp()">&times;</span>
             <h2>Trading Education</h2>
             
+            <h3 style="margin: 15px 0;">Select a Topic:</h3>
             <div class="knowledge-grid">
                 <div class="knowledge-card" onclick="showTopic('what_is_swing')">
-                    <h4>🎯 What is Swing Trading?</h4>
-                    <p>Learn the basics</p>
+                    <h4>🎯 Swing Trading Basics</h4>
+                    <p>What it is and how it works</p>
                 </div>
                 <div class="knowledge-card" onclick="showTopic('understanding_scores')">
                     <h4>📊 Understanding Scores</h4>
                     <p>What the numbers mean</p>
+                </div>
+                <div class="knowledge-card" onclick="showTopic('rsi_explained')">
+                    <h4>📈 RSI Indicator</h4>
+                    <p>Momentum explained</p>
+                </div>
+                <div class="knowledge-card" onclick="showTopic('how_to_trade')">
+                    <h4>💰 How to Execute</h4>
+                    <p>Step-by-step trading</p>
+                </div>
+                <div class="knowledge-card" onclick="showTopic('risk_management')">
+                    <h4>🛡️ Risk Management</h4>
+                    <p>Protect your capital</p>
                 </div>
             </div>
             
@@ -359,12 +397,21 @@
         
         // Show topic
         function showTopic(topicKey) {
+            console.log('Showing topic:', topicKey);
             if (knowledge[topicKey]) {
                 const topic = knowledge[topicKey];
+                // Convert newlines to <br> for proper display
+                const formattedContent = topic.content.replace(/\n/g, '<br>');
                 document.getElementById('topic-content').innerHTML = `
+                    <hr style="margin: 20px 0;">
                     <h3>${topic.title}</h3>
-                    <p>${topic.content}</p>
+                    <div style="line-height: 1.6; margin-top: 15px;">
+                        ${formattedContent}
+                    </div>
                 `;
+            } else {
+                console.log('Topic not found:', topicKey);
+                console.log('Available topics:', Object.keys(knowledge));
             }
         }
         

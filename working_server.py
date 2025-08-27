@@ -45,11 +45,83 @@ active_scans = {}
 KNOWLEDGE = {
     "what_is_swing": {
         "title": "What is Swing Trading?",
-        "content": "Swing trading holds stocks 2-10 days targeting 3-8% gains. You buy oversold stocks (low RSI) and sell when they bounce back."
+        "content": """Swing trading is a strategy where you:
+• Hold stocks for 2-10 days (not minutes, not months)
+• Target 3-8% gains per trade
+• Buy when stocks are oversold (RSI under 40)
+• Sell when they bounce back up
+• Use stop losses to limit risk to 2-3%
+
+Think of it like catching a wave - you ride the price movement for a short distance, then get out with profit."""
     },
     "understanding_scores": {
         "title": "Understanding Scores",
-        "content": "Score 15-25: Strong BUY signal\nScore 10-15: Moderate BUY\nScore 5-10: WATCH\nScore <5: AVOID"
+        "content": """The score tells you how good the setup is:
+
+Score 15-25: STRONG BUY 🟢
+• Excellent risk/reward ratio
+• Stock is oversold and ready to bounce
+• Use larger position size (8-10% of portfolio)
+
+Score 10-15: MODERATE BUY 🟡
+• Good opportunity 
+• Standard position size (5-7% of portfolio)
+
+Score 5-10: WATCH 👁️
+• Wait for better entry
+• Or use small position (3-5% of portfolio)
+
+Score <5: AVOID ❌
+• No clear setup
+• Poor risk/reward"""
+    },
+    "how_to_trade": {
+        "title": "How to Execute a Trade",
+        "content": """Step-by-step process:
+
+1. See a BUY signal in the scanner
+2. Check the entry price (e.g., $150.30)
+3. Place a 'Buy Stop' order at entry price
+4. Once filled, immediately set:
+   • Stop loss order (protect downside)
+   • Limit sell at Target 1 (take profits)
+5. When Target 1 hits, sell half position
+6. Move stop to breakeven for remaining shares
+7. Sell rest at Target 2 or if stopped out"""
+    },
+    "risk_management": {
+        "title": "Risk Management Rules",
+        "content": """Golden rules to protect your money:
+
+1. ALWAYS use stop losses (no exceptions!)
+2. Never risk more than 2% on a single trade
+3. Maximum 3 trades open at once
+4. Keep 30-50% cash for opportunities
+5. If down 5% in a month, stop and review
+
+Position sizing example:
+• $10,000 account
+• Strong signal = $1,000 position (10%)
+• With 3% stop loss = Risk only $30"""
+    },
+    "rsi_explained": {
+        "title": "Understanding RSI",
+        "content": """RSI (Relative Strength Index) measures momentum:
+
+• Under 30 = Oversold 🟢
+  Stock beaten down, bounce likely
+  
+• 30-40 = Getting oversold 🟡
+  Starting to look interesting
+  
+• 40-60 = Neutral zone ⚪
+  No strong signal either way
+  
+• 60-70 = Getting overbought 🟡
+  Be cautious, pullback possible
+  
+• Over 70 = Overbought 🔴
+  Too extended, avoid buying"""
     },
     "presets": {
         "conservative": {"min_score": 15, "max_rsi": 40, "position_size": "3-5%"},
