@@ -208,20 +208,22 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
             # Get real price from Alpaca
             real_price = get_real_price(stock['symbol'])
             
-            # Determine action
+            # Determine action and targets
             if stock['score'] >= 15:
                 action = 'BUY'
                 entry = real_price * 1.002
                 stop = real_price * 0.97
-                target = real_price * 1.05
+                target1 = real_price * 1.05  # 5% gain
+                target2 = real_price * 1.08  # 8% gain
             elif stock['score'] >= 10:
                 action = 'WATCH'
                 entry = real_price * 0.99
                 stop = entry * 0.97
-                target = entry * 1.03
+                target1 = entry * 1.03  # 3% gain
+                target2 = entry * 1.05  # 5% gain
             else:
                 action = 'AVOID'
-                entry = stop = target = 0
+                entry = stop = target1 = target2 = 0
             
             results.append({
                 'symbol': stock['symbol'],
@@ -231,7 +233,8 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
                 'action': action,
                 'entry_price': round(entry, 2) if entry else None,
                 'stop_loss': round(stop, 2) if stop else None,
-                'target_1': round(target, 2) if target else None,
+                'target_1': round(target1, 2) if target1 else None,
+                'target_2': round(target2, 2) if target2 else None,
                 'gap_percent': round((i - 5) * 0.3, 1),
                 'volume': 10000000
             })

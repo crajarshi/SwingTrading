@@ -214,7 +214,8 @@
                 <th>Action</th>
                 <th>Entry</th>
                 <th>Stop Loss</th>
-                <th>Target</th>
+                <th>Target 1</th>
+                <th>Target 2</th>
             </tr>
         </thead>
         <tbody id="results"></tbody>
@@ -366,19 +367,22 @@
                     <td>${result.entry_price ? '$' + result.entry_price : '-'}</td>
                     <td>${result.stop_loss ? '$' + result.stop_loss : '-'}</td>
                     <td>${result.target_1 ? '$' + result.target_1 : '-'}</td>
+                    <td>${result.target_2 ? '$' + result.target_2 : '-'}</td>
                 `;
                 
                 // Add click handler
                 row.style.cursor = 'pointer';
                 row.onclick = () => {
-                    alert(`${result.symbol} Details:\n\n` +
+                    alert(`${result.symbol} Trading Plan:\n\n` +
                           `Current Price: $${result.close}\n` +
                           `Score: ${result.score}\n` +
                           `RSI: ${result.rsi14}\n` +
                           `Action: ${result.action}\n` +
                           (result.entry_price ? `\nEntry: $${result.entry_price}\n` +
-                          `Stop Loss: $${result.stop_loss}\n` +
-                          `Target: $${result.target_1}` : ''));
+                          `Stop Loss: $${result.stop_loss} (-${((1 - result.stop_loss/result.close) * 100).toFixed(1)}%)\n` +
+                          `Target 1: $${result.target_1} (+${((result.target_1/result.close - 1) * 100).toFixed(1)}%)\n` +
+                          `Target 2: $${result.target_2} (+${((result.target_2/result.close - 1) * 100).toFixed(1)}%)\n\n` +
+                          `Strategy: Sell 50% at T1, rest at T2` : ''));
                 };
             });
             
