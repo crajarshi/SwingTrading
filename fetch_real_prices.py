@@ -34,11 +34,13 @@ def fetch_real_prices(symbols):
             current_price = meta['regularMarketPrice']
             prev_close = meta['previousClose']
             
+            change_pct = round((current_price - prev_close) / prev_close * 100, 2)
+            
             prices[symbol] = {
                 'price': round(current_price, 2),
                 'prev_close': round(prev_close, 2),
                 'change': round(current_price - prev_close, 2),
-                'change_pct': round((current_price - prev_close) / prev_close * 100, 2),
+                'change_pct': change_pct,
                 'volume': meta.get('regularMarketVolume', 0),
                 'market_cap': meta.get('marketCap', 0),
                 'day_high': meta.get('regularMarketDayHigh', current_price),

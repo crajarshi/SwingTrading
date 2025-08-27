@@ -9,8 +9,8 @@ const state = {
     ws: null
 };
 
-// API base URL
-const API_URL = 'http://localhost:8000';
+// API base URL - use same origin as page
+const API_URL = window.location.origin;
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
@@ -127,7 +127,7 @@ function connectWebSocket(runId) {
         attempts++;
         
         try {
-            const response = await fetch(`http://localhost:8000/api/scan/${runId}/status`);
+            const response = await fetch(`${API_URL}/api/scan/${runId}/status`);
             const status = await response.json();
             
             console.log('Status update:', status);

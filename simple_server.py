@@ -108,7 +108,7 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         return results
 
 # Start server
-PORT = 8000
+PORT = 8001
 print(f"Starting server at http://localhost:{PORT}")
 print(f"Serving files from: web/")
 print(f"API endpoints available:")

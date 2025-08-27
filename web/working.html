@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SwingTrading Scanner - Working Version</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, system-ui; background: #f5f5f5; }
+        
+        header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .controls {
+            background: white;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .preset-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .preset {
+            padding: 8px 16px;
+            border: 2px solid #3498db;
+            background: white;
+            color: #3498db;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        .preset.active {
+            background: #3498db;
+            color: white;
+        }
+        
+        button {
+            padding: 10px 20px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        button:hover { background: #229954; }
+        
+        .help-btn {
+            background: #3498db;
+        }
+        
+        .progress {
+            height: 30px;
+            background: #ecf0f1;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 20px;
+            display: none;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: #3498db;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        
+        table {
+            width: calc(100% - 40px);
+            margin: 20px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        th {
+            background: #34495e;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .action-buy { color: #27ae60; font-weight: bold; }
+        .action-watch { color: #f39c12; font-weight: bold; }
+        .action-avoid { color: #e74c3c; font-weight: bold; }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: white;
+            width: 500px;
+            margin: 100px auto;
+            padding: 30px;
+            border-radius: 10px;
+            position: relative;
+        }
+        
+        .close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 30px;
+            cursor: pointer;
+        }
+        
+        .knowledge-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .knowledge-card {
+            padding: 15px;
+            background: #ecf0f1;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        
+        .knowledge-card:hover {
+            background: #bdc3c7;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>SwingTrading Scanner</h1>
+            <span id="status">Using Real Alpaca Data</span>
+        </div>
+        <div>
+            <button class="help-btn" onclick="showHelp()">📚 Help</button>
+        </div>
+    </header>
+    
+    <div class="controls">
+        <h3>Quick Controls</h3>
+        <div class="preset-buttons">
+            <button class="preset" onclick="setPreset('conservative')">Conservative</button>
+            <button class="preset active" onclick="setPreset('balanced')">Balanced</button>
+            <button class="preset" onclick="setPreset('aggressive')">Aggressive</button>
+        </div>
+        
+        <button onclick="runScan()">🔍 Run Scan</button>
+        <span id="scan-status" style="margin-left: 20px;"></span>
+    </div>
+    
+    <div class="progress" id="progress">
+        <div class="progress-bar" id="progress-bar">
+            <span id="progress-text">0%</span>
+        </div>
+    </div>
+    
+    <table id="results-table" style="display: none;">
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th>Price (Real)</th>
+                <th>Score</th>
+                <th>RSI</th>
+                <th>Action</th>
+                <th>Entry</th>
+                <th>Stop Loss</th>
+                <th>Target</th>
+            </tr>
+        </thead>
+        <tbody id="results"></tbody>
+    </table>
+    
+    <!-- Help Modal -->
+    <div id="help-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeHelp()">&times;</span>
+            <h2>Trading Education</h2>
+            
+            <div class="knowledge-grid">
+                <div class="knowledge-card" onclick="showTopic('what_is_swing')">
+                    <h4>🎯 What is Swing Trading?</h4>
+                    <p>Learn the basics</p>
+                </div>
+                <div class="knowledge-card" onclick="showTopic('understanding_scores')">
+                    <h4>📊 Understanding Scores</h4>
+                    <p>What the numbers mean</p>
+                </div>
+            </div>
+            
+            <div id="topic-content"></div>
+        </div>
+    </div>
+    
+    <script>
+        let knowledge = {};
+        let currentPreset = 'balanced';
+        
+        // Load knowledge base
+        async function loadKnowledge() {
+            try {
+                const response = await fetch('/api/knowledge');
+                knowledge = await response.json();
+                console.log('Knowledge loaded');
+            } catch (error) {
+                console.error('Failed to load knowledge');
+            }
+        }
+        
+        // Set preset
+        function setPreset(preset) {
+            currentPreset = preset;
+            
+            // Update UI
+            document.querySelectorAll('.preset').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Apply preset settings
+            if (knowledge.presets && knowledge.presets[preset]) {
+                const settings = knowledge.presets[preset];
+                console.log('Applied preset:', preset, settings);
+                document.getElementById('scan-status').textContent = 
+                    `Preset: ${preset} (Min Score: ${settings.min_score}, Position: ${settings.position_size})`;
+            }
+        }
+        
+        // Run scan
+        async function runScan() {
+            console.log('Starting scan...');
+            
+            // Clear old results
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('results-table').style.display = 'none';
+            
+            // Show progress
+            document.getElementById('progress').style.display = 'block';
+            document.getElementById('scan-status').textContent = 'Scanning...';
+            
+            try {
+                // Start scan
+                const response = await fetch('/api/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ preset: currentPreset })
+                });
+                
+                const data = await response.json();
+                const runId = data.run_id;
+                
+                // Poll for progress
+                const interval = setInterval(async () => {
+                    const statusResponse = await fetch(`/api/scan/${runId}/status`);
+                    const status = await statusResponse.json();
+                    
+                    // Update progress bar
+                    const progress = (status.progress.done / status.progress.total) * 100;
+                    document.getElementById('progress-bar').style.width = progress + '%';
+                    document.getElementById('progress-text').textContent = 
+                        `${status.progress.done}/${status.progress.total}`;
+                    
+                    // Check if done
+                    if (status.state === 'done') {
+                        clearInterval(interval);
+                        
+                        // Load results
+                        const resultsResponse = await fetch(`/api/scan/${runId}/results`);
+                        const resultsData = await resultsResponse.json();
+                        
+                        displayResults(resultsData.results);
+                    }
+                }, 500);
+                
+            } catch (error) {
+                console.error('Scan failed:', error);
+                document.getElementById('scan-status').textContent = 'Scan failed';
+            }
+        }
+        
+        // Display results
+        function displayResults(results) {
+            document.getElementById('progress').style.display = 'none';
+            document.getElementById('scan-status').textContent = `Found ${results.length} stocks`;
+            
+            const tbody = document.getElementById('results');
+            tbody.innerHTML = '';
+            
+            results.forEach(result => {
+                const row = tbody.insertRow();
+                
+                // Apply action class
+                let actionClass = '';
+                if (result.action === 'BUY') actionClass = 'action-buy';
+                else if (result.action === 'WATCH') actionClass = 'action-watch';
+                else actionClass = 'action-avoid';
+                
+                row.innerHTML = `
+                    <td><strong>${result.symbol}</strong></td>
+                    <td>$${result.close}</td>
+                    <td>${result.score.toFixed(1)}</td>
+                    <td>${result.rsi14.toFixed(1)}</td>
+                    <td class="${actionClass}">${result.action}</td>
+                    <td>${result.entry_price ? '$' + result.entry_price : '-'}</td>
+                    <td>${result.stop_loss ? '$' + result.stop_loss : '-'}</td>
+                    <td>${result.target_1 ? '$' + result.target_1 : '-'}</td>
+                `;
+                
+                // Add click handler
+                row.style.cursor = 'pointer';
+                row.onclick = () => {
+                    alert(`${result.symbol} Details:\n\n` +
+                          `Current Price: $${result.close}\n` +
+                          `Score: ${result.score}\n` +
+                          `RSI: ${result.rsi14}\n` +
+                          `Action: ${result.action}\n` +
+                          (result.entry_price ? `\nEntry: $${result.entry_price}\n` +
+                          `Stop Loss: $${result.stop_loss}\n` +
+                          `Target: $${result.target_1}` : ''));
+                };
+            });
+            
+            document.getElementById('results-table').style.display = 'table';
+        }
+        
+        // Show help
+        function showHelp() {
+            document.getElementById('help-modal').style.display = 'block';
+        }
+        
+        // Close help
+        function closeHelp() {
+            document.getElementById('help-modal').style.display = 'none';
+        }
+        
+        // Show topic
+        function showTopic(topicKey) {
+            if (knowledge[topicKey]) {
+                const topic = knowledge[topicKey];
+                document.getElementById('topic-content').innerHTML = `
+                    <h3>${topic.title}</h3>
+                    <p>${topic.content}</p>
+                `;
+            }
+        }
+        
+        // Initialize
+        window.onload = () => {
+            loadKnowledge();
+        };
+    </script>
+</body>
+</html>
