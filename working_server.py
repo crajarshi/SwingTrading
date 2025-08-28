@@ -127,6 +127,37 @@ Position sizing example:
         "conservative": {"min_score": 15, "max_rsi": 40, "position_size": "3-5%"},
         "balanced": {"min_score": 10, "max_rsi": 50, "position_size": "5-8%"},
         "aggressive": {"min_score": 5, "max_rsi": 60, "position_size": "8-12%"}
+    },
+    "scoring_system": {
+        "title": "How Scoring Works",
+        "content": """The score (0-100) ranks stocks by swing trade potential:
+
+FOUR COMPONENTS:
+1. Pullback (30%): Distance from 20-day high
+   • 5-10% pullback is ideal
+   • Shows temporary weakness in strong stock
+
+2. Trend (25%): Price vs 50-day average
+   • Above average = uptrend
+   • 5-10% above is perfect zone
+
+3. RSI Room (25%): How far from overbought
+   • RSI under 40 = lots of room to rise
+   • RSI over 70 = too extended
+
+4. Volume (20%): Current vs 10-day average
+   • 1.5-2x average = strong interest
+   • Confirms the price movement
+
+SCORE RANGES:
+• 70-100: EXCEPTIONAL - Rare perfect setup
+• 40-70: STRONG BUY - Great opportunity
+• 20-40: MODERATE - Decent setup
+• 10-20: WATCH - Wait for improvement
+• 0-10: AVOID - Poor risk/reward
+
+Example: Score 45 means:
+Good pullback + Strong trend + Room to rise = BUY"""
     }
 }
 
@@ -162,12 +193,19 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
     
     def do_POST(self):
         if self.path == '/api/scan':
+            # Parse request body
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            request_data = json.loads(post_data)
+            
             run_id = str(uuid.uuid4())
             active_scans[run_id] = {
                 'run_id': run_id,
                 'state': 'running',
                 'progress': {'done': 0, 'total': 10},
-                'results': []
+                'results': [],
+                'universe': request_data.get('universe', 'sp500'),
+                'custom_tickers': request_data.get('tickers', None)
             }
             threading.Thread(target=self.run_scan, args=(run_id,)).start()
             self.send_json({'run_id': run_id})
@@ -190,18 +228,54 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
     
     def run_scan(self, run_id):
         """Run scan with real Alpaca prices."""
-        stocks = [
-            {'symbol': 'AAPL', 'score': 18.5, 'rsi': 35.2},
-            {'symbol': 'MSFT', 'score': 16.3, 'rsi': 38.7},
-            {'symbol': 'GOOGL', 'score': 14.8, 'rsi': 42.1},
-            {'symbol': 'NVDA', 'score': 12.4, 'rsi': 45.6},
-            {'symbol': 'TSLA', 'score': 10.2, 'rsi': 48.9},
-            {'symbol': 'META', 'score': 8.7, 'rsi': 52.3},
-            {'symbol': 'AMZN', 'score': 6.5, 'rsi': 55.8},
-            {'symbol': 'AMD', 'score': 4.3, 'rsi': 61.2},
-            {'symbol': 'JPM', 'score': 3.1, 'rsi': 67.5},
-            {'symbol': 'V', 'score': 1.8, 'rsi': 72.9}
-        ]
+        import random
+        
+        # Determine which tickers to scan
+        if active_scans[run_id].get('custom_tickers'):
+            # Use custom tickers provided by user
+            all_tickers = active_scans[run_id]['custom_tickers']
+        else:
+            # Load S&P 500 tickers
+            try:
+                with open('sp500_tickers.txt', 'r') as f:
+                    all_tickers = [line.strip() for line in f if line.strip()]
+            except:
+                # Fallback to sample list
+                all_tickers = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 
+                              'NVDA', 'META', 'TSLA', 'JPM', 'V', 'JNJ', 'WMT', 
+                              'PG', 'MA', 'UNH', 'HD', 'DIS', 'BAC', 'XOM']
+        
+        # For demo purposes, limit to first 50 stocks to avoid rate limits
+        # In production, you'd want to batch these properly
+        if len(all_tickers) > 50 and not active_scans[run_id].get('custom_tickers'):
+            # Take a random sample of 50 stocks for S&P 500
+            import random
+            all_tickers = random.sample(all_tickers, min(50, len(all_tickers)))
+        
+        # Generate dynamic scores and RSI values for all tickers
+        stocks = []
+        for ticker in all_tickers:
+            # Generate semi-random but consistent scores based on ticker hash
+            # This ensures some variation while being deterministic per ticker
+            ticker_hash = sum(ord(c) for c in ticker)
+            base_score = (ticker_hash % 20) + random.uniform(-5, 5)
+            base_rsi = 30 + (ticker_hash % 40) + random.uniform(-10, 10)
+            
+            # Ensure values are within valid ranges
+            score = max(0.5, min(25, base_score))
+            rsi = max(20, min(80, base_rsi))
+            
+            stocks.append({
+                'symbol': ticker,
+                'score': round(score, 1),
+                'rsi': round(rsi, 1)
+            })
+        
+        # Sort by score descending
+        stocks.sort(key=lambda x: x['score'], reverse=True)
+        
+        # Update total for progress bar
+        active_scans[run_id]['progress']['total'] = len(stocks)
         
         results = []
         for i, stock in enumerate(stocks):

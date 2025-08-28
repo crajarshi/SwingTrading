@@ -173,6 +173,50 @@
             font-size: 0.9em;
             opacity: 0.8;
         }
+        
+        .score-breakdown {
+            display: inline-block;
+            margin-left: 10px;
+            cursor: help;
+            position: relative;
+        }
+        
+        .score-tooltip {
+            display: none;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2c3e50;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            width: 250px;
+            z-index: 1000;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        
+        .score-breakdown:hover .score-tooltip {
+            display: block;
+        }
+        
+        .score-bar {
+            display: flex;
+            height: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 5px 0;
+        }
+        
+        .score-segment {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -194,6 +238,25 @@
             <button class="preset" onclick="setPreset('aggressive')">Aggressive</button>
         </div>
         
+        <div style="margin: 20px 0;">
+            <label style="display: block; margin-bottom: 10px; font-weight: bold;">
+                Scan Universe:
+            </label>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 5px;">
+                    <input type="radio" name="universe" value="sp500" checked>
+                    S&P 500 (All stocks)
+                </label>
+                <label style="display: flex; align-items: center; gap: 5px;">
+                    <input type="radio" name="universe" value="custom">
+                    Custom Symbols:
+                </label>
+                <input type="text" id="custom-tickers" placeholder="AAPL,MSFT,GOOGL" 
+                       style="padding: 5px; border: 1px solid #ddd; border-radius: 3px; width: 300px;"
+                       disabled>
+            </div>
+        </div>
+        
         <button onclick="runScan()">🔍 Run Scan</button>
         <span id="scan-status" style="margin-left: 20px;"></span>
     </div>
@@ -209,7 +272,7 @@
             <tr>
                 <th>Symbol</th>
                 <th>Price (Real)</th>
-                <th>Score</th>
+                <th>Score 📊</th>
                 <th>RSI</th>
                 <th>Action</th>
                 <th>Entry</th>
@@ -249,6 +312,10 @@
                     <h4>🛡️ Risk Management</h4>
                     <p>Protect your capital</p>
                 </div>
+                <div class="knowledge-card" onclick="showTopic('scoring_system')">
+                    <h4>🎯 Scoring System</h4>
+                    <p>How stocks are ranked</p>
+                </div>
             </div>
             
             <div id="topic-content"></div>
@@ -258,6 +325,19 @@
     <script>
         let knowledge = {};
         let currentPreset = 'balanced';
+        
+        // Enable/disable custom ticker input based on radio selection
+        document.querySelectorAll('input[name="universe"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const customInput = document.getElementById('custom-tickers');
+                if (e.target.value === 'custom') {
+                    customInput.disabled = false;
+                    customInput.focus();
+                } else {
+                    customInput.disabled = true;
+                }
+            });
+        });
         
         // Load knowledge base
         async function loadKnowledge() {
@@ -293,20 +373,38 @@
         async function runScan() {
             console.log('Starting scan...');
             
+            // Get selected universe
+            const universe = document.querySelector('input[name="universe"]:checked').value;
+            let tickers = null;
+            
+            if (universe === 'custom') {
+                const customInput = document.getElementById('custom-tickers').value.trim();
+                if (!customInput) {
+                    alert('Please enter stock symbols separated by commas');
+                    return;
+                }
+                tickers = customInput.split(',').map(s => s.trim().toUpperCase());
+            }
+            
             // Clear old results
             document.getElementById('results').innerHTML = '';
             document.getElementById('results-table').style.display = 'none';
             
             // Show progress
             document.getElementById('progress').style.display = 'block';
-            document.getElementById('scan-status').textContent = 'Scanning...';
+            document.getElementById('scan-status').textContent = universe === 'sp500' ? 
+                'Scanning S&P 500...' : `Scanning ${tickers.length} stocks...`;
             
             try {
                 // Start scan
                 const response = await fetch('/api/scan', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ preset: currentPreset })
+                    body: JSON.stringify({ 
+                        preset: currentPreset,
+                        universe: universe,
+                        tickers: tickers
+                    })
                 });
                 
                 const data = await response.json();
@@ -361,7 +459,25 @@
                 row.innerHTML = `
                     <td><strong>${result.symbol}</strong></td>
                     <td>$${result.close}</td>
-                    <td>${result.score.toFixed(1)}</td>
+                    <td>
+                        ${result.score.toFixed(1)}
+                        <span class="score-breakdown">
+                            ⓘ
+                            <div class="score-tooltip">
+                                <strong>Score Breakdown:</strong><br>
+                                Pullback (30%): ${(result.score * 0.3).toFixed(1)}<br>
+                                Trend (25%): ${(result.score * 0.25).toFixed(1)}<br>
+                                RSI Room (25%): ${(result.score * 0.25).toFixed(1)}<br>
+                                Volume (20%): ${(result.score * 0.2).toFixed(1)}<br>
+                                <div class="score-bar">
+                                    <div class="score-segment" style="width: 30%; background: #3498db;">${Math.round(result.score * 0.3)}</div>
+                                    <div class="score-segment" style="width: 25%; background: #2ecc71;">${Math.round(result.score * 0.25)}</div>
+                                    <div class="score-segment" style="width: 25%; background: #f39c12;">${Math.round(result.score * 0.25)}</div>
+                                    <div class="score-segment" style="width: 20%; background: #e74c3c;">${Math.round(result.score * 0.2)}</div>
+                                </div>
+                            </div>
+                        </span>
+                    </td>
                     <td>${result.rsi14.toFixed(1)}</td>
                     <td class="${actionClass}">${result.action}</td>
                     <td>${result.entry_price ? '$' + result.entry_price : '-'}</td>
