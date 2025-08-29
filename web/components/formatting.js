@@ -1,1 +1,0 @@
-// Formatting utilities stub - functionality is in app.js
