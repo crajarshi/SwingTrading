@@ -471,23 +471,55 @@
                 
                 // Build tooltip content with real component data
                 let tooltipContent = '<strong>Score Breakdown:</strong><br>';
+                
+                // Debug logging
+                console.log(`Score components for ${result.symbol}:`, result.score_components);
+                
                 if (result.score_components) {
                     const c = result.score_components;
-                    tooltipContent += `
-                        <br><b>Pullback (30%):</b> ${c.pullback.weighted.toFixed(1)} pts<br>
-                        &nbsp;&nbsp;• ${c.pullback.pct_below_high.toFixed(1)}% below 20-day high<br>
-                        
-                        <b>Trend (25%):</b> ${c.trend.weighted.toFixed(1)} pts<br>
-                        &nbsp;&nbsp;• ${c.trend.pct_vs_sma50 > 0 ? '+' : ''}${c.trend.pct_vs_sma50.toFixed(1)}% vs SMA50<br>
-                        
-                        <b>RSI Room (25%):</b> ${c.rsi.weighted.toFixed(1)} pts<br>
-                        &nbsp;&nbsp;• RSI at ${c.rsi.value.toFixed(1)} (${c.rsi.headroom.toFixed(0)} pts from 70)<br>
-                        
-                        <b>Volume (20%):</b> ${c.volume.weighted.toFixed(1)} pts<br>
-                        &nbsp;&nbsp;• ${c.volume.ratio.toFixed(1)}x 10-day average
-                    `;
+                    tooltipContent += '<br>';
+                    tooltipContent += `<div style="font-size: 11px; color: #aaa;">Total Score: ${result.score.toFixed(1)}</div><br>`;
+                    
+                    // Volume component (35% - HIGHEST WEIGHT)
+                    if (c.volume) {
+                        const volWeighted = c.volume.weighted || 0;
+                        const volRatio = c.volume.ratio || 0;
+                        tooltipContent += `<b>Volume (35%):</b> ${volWeighted.toFixed(1)} pts<br>`;
+                        tooltipContent += `&nbsp;&nbsp;• ${volRatio.toFixed(1)}x 10-day average<br><br>`;
+                    }
+                    
+                    // Pullback component (25%)
+                    if (c.pullback) {
+                        const pullbackWeighted = c.pullback.weighted || 0;
+                        const pctBelowHigh = c.pullback.pct_below_high || 0;
+                        tooltipContent += `<b>Pullback (25%):</b> ${pullbackWeighted.toFixed(1)} pts<br>`;
+                        tooltipContent += `&nbsp;&nbsp;• ${pctBelowHigh.toFixed(1)}% below 20-day high<br><br>`;
+                    }
+                    
+                    // Trend component (20%)
+                    if (c.trend) {
+                        const trendWeighted = c.trend.weighted || 0;
+                        const pctVsSma50 = c.trend.pct_vs_sma50 || 0;
+                        tooltipContent += `<b>Trend (20%):</b> ${trendWeighted.toFixed(1)} pts<br>`;
+                        tooltipContent += `&nbsp;&nbsp;• ${pctVsSma50 > 0 ? '+' : ''}${pctVsSma50.toFixed(1)}% vs SMA50<br><br>`;
+                    }
+                    
+                    // RSI Room component (20%)
+                    if (c.rsi) {
+                        const rsiWeighted = c.rsi.weighted || 0;
+                        const rsiValue = c.rsi.value || 0;
+                        const rsiHeadroom = c.rsi.headroom || 0;
+                        tooltipContent += `<b>RSI Room (20%):</b> ${rsiWeighted.toFixed(1)} pts<br>`;
+                        tooltipContent += `&nbsp;&nbsp;• RSI at ${rsiValue.toFixed(1)} (${rsiHeadroom.toFixed(0)} pts from 70)<br>`;
+                    }
+                    
+                    // Add calculation summary
+                    tooltipContent += `<br><div style="border-top: 1px solid #555; padding-top: 8px; font-size: 11px;">`;
+                    tooltipContent += `Formula: (Vol×0.35) + (Pull×0.25) + (Trend×0.20) + (RSI×0.20)`;
+                    tooltipContent += `</div>`;
                 } else {
                     // Fallback for old data without components
+                    console.warn(`No score components for ${result.symbol}`);
                     tooltipContent += 'Component details not available';
                 }
                 

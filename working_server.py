@@ -176,29 +176,7 @@ def calculate_proper_score(indicators):
     volume = indicators['volume']
     volume_avg = indicators['volume_avg_10d']
     
-    # Component 1: Pullback proximity (30% weight)
-    if high20 > 0:
-        pullback_pct = ((high20 - close) / high20) * 100
-        pullback_score = (1 - close / high20) * 100
-        pullback_score = max(0, min(100, pullback_score))  # Clamp to 0-100
-    else:
-        pullback_pct = 0
-        pullback_score = 0
-    
-    # Component 2: Trend strength (25% weight)
-    if sma50 > 0:
-        trend_pct = ((close - sma50) / sma50) * 100
-        trend_score = ((close / sma50) - 1) * 100
-        trend_score = max(0, min(100, trend_score))  # Clamp to 0-100
-    else:
-        trend_pct = 0
-        trend_score = 0
-    
-    # Component 3: RSI headroom (25% weight)
-    rsi_room = 70 - rsi14
-    rsi_room_score = max(0, min(100, rsi_room))  # Clamp to 0-100
-    
-    # Component 4: Volume ratio (20% weight)
+    # Component 1: Volume ratio (35% weight) - HIGHEST WEIGHT
     if volume_avg > 0:
         vol_ratio_actual = volume / volume_avg
         vol_ratio_score = (volume / volume_avg) * 20
@@ -207,41 +185,63 @@ def calculate_proper_score(indicators):
         vol_ratio_actual = 0
         vol_ratio_score = 0
     
-    # Calculate weighted score
+    # Component 2: Pullback proximity (25% weight)
+    if high20 > 0:
+        pullback_pct = ((high20 - close) / high20) * 100
+        pullback_score = (1 - close / high20) * 100
+        pullback_score = max(0, min(100, pullback_score))  # Clamp to 0-100
+    else:
+        pullback_pct = 0
+        pullback_score = 0
+    
+    # Component 3: Trend strength (20% weight)
+    if sma50 > 0:
+        trend_pct = ((close - sma50) / sma50) * 100
+        trend_score = ((close / sma50) - 1) * 100
+        trend_score = max(0, min(100, trend_score))  # Clamp to 0-100
+    else:
+        trend_pct = 0
+        trend_score = 0
+    
+    # Component 4: RSI headroom (20% weight)
+    rsi_room = 70 - rsi14
+    rsi_room_score = max(0, min(100, rsi_room))  # Clamp to 0-100
+    
+    # Calculate weighted score with Volume as highest weight
     total_score = (
-        pullback_score * 0.30 +
-        trend_score * 0.25 +
-        rsi_room_score * 0.25 +
-        vol_ratio_score * 0.20
+        vol_ratio_score * 0.35 +    # Volume - highest weight
+        pullback_score * 0.25 +
+        trend_score * 0.20 +
+        rsi_room_score * 0.20
     )
     
     return {
         'total': max(0, min(100, total_score)),
         'components': {
+            'volume': {
+                'score': vol_ratio_score,
+                'weighted': vol_ratio_score * 0.35,
+                'ratio': vol_ratio_actual,
+                'current': volume,
+                'average': volume_avg
+            },
             'pullback': {
                 'score': pullback_score,
-                'weighted': pullback_score * 0.30,
+                'weighted': pullback_score * 0.25,
                 'pct_below_high': pullback_pct,
                 'high20': high20
             },
             'trend': {
                 'score': trend_score,
-                'weighted': trend_score * 0.25,
+                'weighted': trend_score * 0.20,
                 'pct_vs_sma50': trend_pct,
                 'sma50': sma50
             },
             'rsi': {
                 'score': rsi_room_score,
-                'weighted': rsi_room_score * 0.25,
+                'weighted': rsi_room_score * 0.20,
                 'value': rsi14,
                 'headroom': rsi_room
-            },
-            'volume': {
-                'score': vol_ratio_score,
-                'weighted': vol_ratio_score * 0.20,
-                'ratio': vol_ratio_actual,
-                'current': volume,
-                'average': volume_avg
             }
         }
     }
