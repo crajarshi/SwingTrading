@@ -189,12 +189,25 @@
             transform: translateX(-50%);
             background: #2c3e50;
             color: white;
-            padding: 10px;
-            border-radius: 5px;
-            width: 250px;
+            padding: 15px;
+            border-radius: 8px;
+            width: 320px;
             z-index: 1000;
-            margin-bottom: 5px;
-            font-size: 12px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            line-height: 1.5;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .score-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 8px solid transparent;
+            border-top-color: #2c3e50;
         }
         
         .score-breakdown:hover .score-tooltip {
@@ -226,7 +239,7 @@
             <span id="status">Using Real Alpaca Data</span>
         </div>
         <div>
-            <button class="help-btn" onclick="showHelp()">📚 Help</button>
+            <button class="help-btn" onclick="showHelp()">Help</button>
         </div>
     </header>
     
@@ -257,7 +270,7 @@
             </div>
         </div>
         
-        <button onclick="runScan()">🔍 Run Scan</button>
+        <button onclick="runScan()">Run Scan</button>
         <span id="scan-status" style="margin-left: 20px;"></span>
     </div>
     
@@ -272,7 +285,7 @@
             <tr>
                 <th>Symbol</th>
                 <th>Price (Real)</th>
-                <th>Score 📊</th>
+                <th>Score</th>
                 <th>RSI</th>
                 <th>Action</th>
                 <th>Entry</th>
@@ -293,27 +306,27 @@
             <h3 style="margin: 15px 0;">Select a Topic:</h3>
             <div class="knowledge-grid">
                 <div class="knowledge-card" onclick="showTopic('what_is_swing')">
-                    <h4>🎯 Swing Trading Basics</h4>
+                    <h4>Swing Trading Basics</h4>
                     <p>What it is and how it works</p>
                 </div>
                 <div class="knowledge-card" onclick="showTopic('understanding_scores')">
-                    <h4>📊 Understanding Scores</h4>
+                    <h4>Understanding Scores</h4>
                     <p>What the numbers mean</p>
                 </div>
                 <div class="knowledge-card" onclick="showTopic('rsi_explained')">
-                    <h4>📈 RSI Indicator</h4>
+                    <h4>RSI Indicator</h4>
                     <p>Momentum explained</p>
                 </div>
                 <div class="knowledge-card" onclick="showTopic('how_to_trade')">
-                    <h4>💰 How to Execute</h4>
+                    <h4>How to Execute</h4>
                     <p>Step-by-step trading</p>
                 </div>
                 <div class="knowledge-card" onclick="showTopic('risk_management')">
-                    <h4>🛡️ Risk Management</h4>
+                    <h4>Risk Management</h4>
                     <p>Protect your capital</p>
                 </div>
                 <div class="knowledge-card" onclick="showTopic('scoring_system')">
-                    <h4>🎯 Scoring System</h4>
+                    <h4>Scoring System</h4>
                     <p>How stocks are ranked</p>
                 </div>
             </div>
@@ -456,25 +469,37 @@
                 else if (result.action === 'WATCH') actionClass = 'action-watch';
                 else actionClass = 'action-avoid';
                 
+                // Build tooltip content with real component data
+                let tooltipContent = '<strong>Score Breakdown:</strong><br>';
+                if (result.score_components) {
+                    const c = result.score_components;
+                    tooltipContent += `
+                        <br><b>Pullback (30%):</b> ${c.pullback.weighted.toFixed(1)} pts<br>
+                        &nbsp;&nbsp;• ${c.pullback.pct_below_high.toFixed(1)}% below 20-day high<br>
+                        
+                        <b>Trend (25%):</b> ${c.trend.weighted.toFixed(1)} pts<br>
+                        &nbsp;&nbsp;• ${c.trend.pct_vs_sma50 > 0 ? '+' : ''}${c.trend.pct_vs_sma50.toFixed(1)}% vs SMA50<br>
+                        
+                        <b>RSI Room (25%):</b> ${c.rsi.weighted.toFixed(1)} pts<br>
+                        &nbsp;&nbsp;• RSI at ${c.rsi.value.toFixed(1)} (${c.rsi.headroom.toFixed(0)} pts from 70)<br>
+                        
+                        <b>Volume (20%):</b> ${c.volume.weighted.toFixed(1)} pts<br>
+                        &nbsp;&nbsp;• ${c.volume.ratio.toFixed(1)}x 10-day average
+                    `;
+                } else {
+                    // Fallback for old data without components
+                    tooltipContent += 'Component details not available';
+                }
+                
                 row.innerHTML = `
                     <td><strong>${result.symbol}</strong></td>
                     <td>$${result.close}</td>
                     <td>
                         ${result.score.toFixed(1)}
                         <span class="score-breakdown">
-                            ⓘ
+                            <span style="cursor: help; text-decoration: underline; color: #3498db;">[?]</span>
                             <div class="score-tooltip">
-                                <strong>Score Breakdown:</strong><br>
-                                Pullback (30%): ${(result.score * 0.3).toFixed(1)}<br>
-                                Trend (25%): ${(result.score * 0.25).toFixed(1)}<br>
-                                RSI Room (25%): ${(result.score * 0.25).toFixed(1)}<br>
-                                Volume (20%): ${(result.score * 0.2).toFixed(1)}<br>
-                                <div class="score-bar">
-                                    <div class="score-segment" style="width: 30%; background: #3498db;">${Math.round(result.score * 0.3)}</div>
-                                    <div class="score-segment" style="width: 25%; background: #2ecc71;">${Math.round(result.score * 0.25)}</div>
-                                    <div class="score-segment" style="width: 25%; background: #f39c12;">${Math.round(result.score * 0.25)}</div>
-                                    <div class="score-segment" style="width: 20%; background: #e74c3c;">${Math.round(result.score * 0.2)}</div>
-                                </div>
+                                ${tooltipContent}
                             </div>
                         </span>
                     </td>

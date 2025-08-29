@@ -8,7 +8,9 @@ import uuid
 import threading
 import time
 import os
+import sys
 import urllib.request
+import urllib.error
 from urllib.parse import urlparse
 from datetime import datetime
 
@@ -38,30 +40,52 @@ def get_real_price(symbol):
     except:
         return 100.0
 
-def get_historical_data(symbol, days=60):
+def get_historical_data(symbol, days=90):
     """Get historical OHLCV data from Alpaca."""
     try:
         from datetime import datetime, timedelta
+        # Use today as end date - Alpaca will return data up to last trading day
         end_date = datetime.now().strftime('%Y-%m-%d')
         start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
         
-        url = f"https://data.alpaca.markets/v2/stocks/{symbol}/bars?start={start_date}&end={end_date}&timeframe=1Day&feed=iex&page_limit=500"
+        url = f"https://data.alpaca.markets/v2/stocks/{symbol}/bars?start={start_date}&end={end_date}&timeframe=1Day&feed=iex"
+        
+        print(f"Fetching historical data for {symbol} from {start_date} to {end_date}", file=sys.stderr)
+        
+        if not ALPACA_KEY or not ALPACA_SECRET:
+            print(f"ERROR: Missing Alpaca credentials for {symbol}", file=sys.stderr)
+            return None
+            
         req = urllib.request.Request(url, headers={
             'APCA-API-KEY-ID': ALPACA_KEY,
             'APCA-API-SECRET-KEY': ALPACA_SECRET
         })
         response = urllib.request.urlopen(req)
-        data = json.loads(response.read())
+        response_text = response.read()
+        data = json.loads(response_text)
         
         if 'bars' in data and data['bars']:
+            bar_count = len(data['bars'])
+            print(f"Got {bar_count} bars for {symbol}", file=sys.stderr)
             return data['bars']
+        else:
+            print(f"No bars data in response for {symbol}: {data.keys()}", file=sys.stderr)
+            return None
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8') if e.fp else ""
+        print(f"ERROR fetching historical data for {symbol}: HTTP {e.code} - {error_body}", file=sys.stderr)
         return None
-    except:
+    except Exception as e:
+        print(f"ERROR fetching historical data for {symbol}: {e}", file=sys.stderr)
         return None
 
 def calculate_indicators(bars):
     """Calculate technical indicators from historical data."""
-    if not bars or len(bars) < 50:
+    if not bars:
+        print(f"ERROR: No bars provided to calculate_indicators", file=sys.stderr)
+        return None
+    if len(bars) < 40:
+        print(f"ERROR: Insufficient bars for indicators: {len(bars)} < 40", file=sys.stderr)
         return None
     
     # Extract price and volume data
@@ -73,7 +97,9 @@ def calculate_indicators(bars):
     
     # Calculate SMAs
     sma20 = sum(closes[-20:]) / 20
-    sma50 = sum(closes[-50:]) / 50
+    # Use available data for SMA50, or at least 40 bars
+    sma50_period = min(50, len(closes))
+    sma50 = sum(closes[-sma50_period:]) / sma50_period
     
     # Calculate 20-day high
     high20 = max(highs[-20:])
@@ -140,7 +166,7 @@ def calculate_indicators(bars):
 def calculate_proper_score(indicators):
     """Calculate weighted composite score based on actual indicators."""
     if not indicators:
-        return 0
+        return {'total': 0, 'components': {}}
     
     # Extract values
     close = indicators['close']
@@ -152,43 +178,87 @@ def calculate_proper_score(indicators):
     
     # Component 1: Pullback proximity (30% weight)
     if high20 > 0:
-        pullback = (1 - close / high20) * 100
-        pullback = max(0, min(100, pullback))  # Clamp to 0-100
+        pullback_pct = ((high20 - close) / high20) * 100
+        pullback_score = (1 - close / high20) * 100
+        pullback_score = max(0, min(100, pullback_score))  # Clamp to 0-100
     else:
-        pullback = 0
+        pullback_pct = 0
+        pullback_score = 0
     
     # Component 2: Trend strength (25% weight)
     if sma50 > 0:
-        trend = ((close / sma50) - 1) * 100
-        trend = max(0, min(100, trend))  # Clamp to 0-100
+        trend_pct = ((close - sma50) / sma50) * 100
+        trend_score = ((close / sma50) - 1) * 100
+        trend_score = max(0, min(100, trend_score))  # Clamp to 0-100
     else:
-        trend = 0
+        trend_pct = 0
+        trend_score = 0
     
     # Component 3: RSI headroom (25% weight)
     rsi_room = 70 - rsi14
-    rsi_room = max(0, min(100, rsi_room))  # Clamp to 0-100
+    rsi_room_score = max(0, min(100, rsi_room))  # Clamp to 0-100
     
     # Component 4: Volume ratio (20% weight)
     if volume_avg > 0:
-        vol_ratio = (volume / volume_avg) * 20
-        vol_ratio = max(0, min(100, vol_ratio))  # Clamp to 0-100
+        vol_ratio_actual = volume / volume_avg
+        vol_ratio_score = (volume / volume_avg) * 20
+        vol_ratio_score = max(0, min(100, vol_ratio_score))  # Clamp to 0-100
     else:
-        vol_ratio = 0
+        vol_ratio_actual = 0
+        vol_ratio_score = 0
     
     # Calculate weighted score
-    score = (
-        pullback * 0.30 +
-        trend * 0.25 +
-        rsi_room * 0.25 +
-        vol_ratio * 0.20
+    total_score = (
+        pullback_score * 0.30 +
+        trend_score * 0.25 +
+        rsi_room_score * 0.25 +
+        vol_ratio_score * 0.20
     )
     
-    return max(0, min(100, score))  # Final clamp to 0-100
+    return {
+        'total': max(0, min(100, total_score)),
+        'components': {
+            'pullback': {
+                'score': pullback_score,
+                'weighted': pullback_score * 0.30,
+                'pct_below_high': pullback_pct,
+                'high20': high20
+            },
+            'trend': {
+                'score': trend_score,
+                'weighted': trend_score * 0.25,
+                'pct_vs_sma50': trend_pct,
+                'sma50': sma50
+            },
+            'rsi': {
+                'score': rsi_room_score,
+                'weighted': rsi_room_score * 0.25,
+                'value': rsi14,
+                'headroom': rsi_room
+            },
+            'volume': {
+                'score': vol_ratio_score,
+                'weighted': vol_ratio_score * 0.20,
+                'ratio': vol_ratio_actual,
+                'current': volume,
+                'average': volume_avg
+            }
+        }
+    }
 
-def determine_action(score, indicators):
-    """Determine trading action based on score and RSI."""
+def determine_action(score, indicators, preset='balanced'):
+    """Determine trading action based on score, RSI, and preset."""
     if not indicators:
         return 'AVOID'
+    
+    # Get preset thresholds from KNOWLEDGE
+    presets = {
+        "conservative": {"min_score": 15, "max_rsi": 40, "watch_score": 12},
+        "balanced": {"min_score": 10, "max_rsi": 50, "watch_score": 7},
+        "aggressive": {"min_score": 5, "max_rsi": 60, "watch_score": 3}
+    }
+    
+    settings = presets.get(preset, presets['balanced'])
     
     rsi = indicators['rsi14']
     close = indicators['close']
@@ -202,10 +272,10 @@ def determine_action(score, indicators):
     if sma50 > 0 and close < sma50:
         score = score * 0.7
     
-    # Apply thresholds with RSI safety checks
-    if score >= 15 and rsi < 60:
+    # Apply preset-specific thresholds
+    if score >= settings['min_score'] and rsi <= settings['max_rsi']:
         return 'BUY'
-    elif score >= 10 and rsi < 65:
+    elif score >= settings['watch_score'] and rsi < 65:
         return 'WATCH'
     else:
         return 'AVOID'
@@ -230,20 +300,20 @@ Think of it like catching a wave - you ride the price movement for a short dista
         "title": "Understanding Scores",
         "content": """The score tells you how good the setup is:
 
-Score 15-25: STRONG BUY 🟢
+Score 15-25: STRONG BUY
 • Excellent risk/reward ratio
 • Stock is oversold and ready to bounce
 • Use larger position size (8-10% of portfolio)
 
-Score 10-15: MODERATE BUY 🟡
+Score 10-15: MODERATE BUY
 • Good opportunity 
 • Standard position size (5-7% of portfolio)
 
-Score 5-10: WATCH 👁️
+Score 5-10: WATCH
 • Wait for better entry
 • Or use small position (3-5% of portfolio)
 
-Score <5: AVOID ❌
+Score <5: AVOID
 • No clear setup
 • Poor risk/reward"""
     },
@@ -280,19 +350,19 @@ Position sizing example:
         "title": "Understanding RSI",
         "content": """RSI (Relative Strength Index) measures momentum:
 
-• Under 30 = Oversold 🟢
+• Under 30 = Oversold (GREEN)
   Stock beaten down, bounce likely
   
-• 30-40 = Getting oversold 🟡
+• 30-40 = Getting oversold (YELLOW)
   Starting to look interesting
   
-• 40-60 = Neutral zone ⚪
+• 40-60 = Neutral zone
   No strong signal either way
   
-• 60-70 = Getting overbought 🟡
+• 60-70 = Getting overbought (YELLOW)
   Be cautious, pullback possible
   
-• Over 70 = Overbought 🔴
+• Over 70 = Overbought (RED)
   Too extended, avoid buying"""
     },
     "presets": {
@@ -377,7 +447,8 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
                 'progress': {'done': 0, 'total': 10},
                 'results': [],
                 'universe': request_data.get('universe', 'sp500'),
-                'custom_tickers': request_data.get('tickers', None)
+                'custom_tickers': request_data.get('tickers', None),
+                'preset': request_data.get('preset', 'balanced')
             }
             threading.Thread(target=self.run_scan, args=(run_id,)).start()
             self.send_json({'run_id': run_id})
@@ -402,6 +473,13 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
         """Run scan with real Alpaca prices."""
         import random
         
+        # Debug: Check API credentials
+        print(f"Starting scan with Alpaca API configured: {bool(ALPACA_KEY and ALPACA_SECRET)}", file=sys.stderr)
+        if ALPACA_KEY:
+            print(f"API Key present (first 4 chars): {ALPACA_KEY[:4]}...", file=sys.stderr)
+        else:
+            print(f"WARNING: No API Key found!", file=sys.stderr)
+        
         # Determine which tickers to scan
         if active_scans[run_id].get('custom_tickers'):
             # Use custom tickers provided by user
@@ -417,12 +495,9 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
                               'NVDA', 'META', 'TSLA', 'JPM', 'V', 'JNJ', 'WMT', 
                               'PG', 'MA', 'UNH', 'HD', 'DIS', 'BAC', 'XOM']
         
-        # For demo purposes, limit to first 30 stocks to avoid rate limits
-        # In production, you'd want to batch these properly
-        if len(all_tickers) > 30 and not active_scans[run_id].get('custom_tickers'):
-            # Take a random sample of 30 stocks for S&P 500
-            import random
-            all_tickers = random.sample(all_tickers, min(30, len(all_tickers)))
+        # Scan ALL S&P 500 stocks - no limiting
+        # The UI will handle pagination to show 20 at a time
+        # Note: In production, you may want to implement rate limiting or batching
         
         # Process each ticker with real data
         stocks_with_scores = []
@@ -438,21 +513,24 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
                     indicators = calculate_indicators(bars)
                     
                     if indicators:
-                        # Calculate proper score
-                        score = calculate_proper_score(indicators)
+                        # Calculate proper score with components
+                        score_data = calculate_proper_score(indicators)
+                        score = score_data['total']
                         
-                        # Determine action
-                        action = determine_action(score, indicators)
+                        # Determine action using preset
+                        preset = active_scans[run_id].get('preset', 'balanced')
+                        action = determine_action(score, indicators, preset)
                         
                         stocks_with_scores.append({
                             'symbol': ticker,
                             'indicators': indicators,
                             'score': score,
+                            'score_components': score_data['components'],
                             'action': action
                         })
                 else:
                     # Fallback for stocks with no data
-                    print(f"No historical data for {ticker}, using fallback")
+                    print(f"No historical data for {ticker}, using fallback", file=sys.stderr)
                     stocks_with_scores.append({
                         'symbol': ticker,
                         'indicators': {
@@ -465,7 +543,7 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
                         'action': 'AVOID'
                     })
             except Exception as e:
-                print(f"Error processing {ticker}: {e}")
+                print(f"Error processing {ticker}: {e}", file=sys.stderr)
                 # Fallback for errors
                 stocks_with_scores.append({
                     'symbol': ticker,
@@ -486,7 +564,9 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
         # Sort by score descending
         stocks_with_scores.sort(key=lambda x: x['score'], reverse=True)
         
-        # Format results for UI
+        print(f"Scanned {len(stocks_with_scores)} stocks total", file=sys.stderr)
+        
+        # Format ALL results for UI (UI will handle pagination)
         results = []
         for stock_data in stocks_with_scores:
             indicators = stock_data['indicators']
@@ -507,7 +587,7 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
             else:
                 entry = stop = target1 = target2 = 0
             
-            results.append({
+            result_data = {
                 'symbol': stock_data['symbol'],
                 'close': round(close, 2),
                 'score': round(stock_data['score'], 1),
@@ -519,7 +599,13 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
                 'target_2': round(target2, 2) if target2 else None,
                 'gap_percent': round(indicators.get('gap_percent', 0), 1),
                 'volume': indicators.get('volume', 0)
-            })
+            }
+            
+            # Add score components if available
+            if 'score_components' in stock_data:
+                result_data['score_components'] = stock_data['score_components']
+            
+            results.append(result_data)
         
         active_scans[run_id]['state'] = 'done'
         active_scans[run_id]['results'] = results
