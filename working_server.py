@@ -38,6 +38,178 @@ def get_real_price(symbol):
     except:
         return 100.0
 
+def get_historical_data(symbol, days=60):
+    """Get historical OHLCV data from Alpaca."""
+    try:
+        from datetime import datetime, timedelta
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        
+        url = f"https://data.alpaca.markets/v2/stocks/{symbol}/bars?start={start_date}&end={end_date}&timeframe=1Day&feed=iex&page_limit=500"
+        req = urllib.request.Request(url, headers={
+            'APCA-API-KEY-ID': ALPACA_KEY,
+            'APCA-API-SECRET-KEY': ALPACA_SECRET
+        })
+        response = urllib.request.urlopen(req)
+        data = json.loads(response.read())
+        
+        if 'bars' in data and data['bars']:
+            return data['bars']
+        return None
+    except:
+        return None
+
+def calculate_indicators(bars):
+    """Calculate technical indicators from historical data."""
+    if not bars or len(bars) < 50:
+        return None
+    
+    # Extract price and volume data
+    closes = [bar['c'] for bar in bars]
+    highs = [bar['h'] for bar in bars]
+    lows = [bar['l'] for bar in bars]
+    opens = [bar['o'] for bar in bars]
+    volumes = [bar['v'] for bar in bars]
+    
+    # Calculate SMAs
+    sma20 = sum(closes[-20:]) / 20
+    sma50 = sum(closes[-50:]) / 50
+    
+    # Calculate 20-day high
+    high20 = max(highs[-20:])
+    
+    # Calculate RSI (14-period)
+    def calculate_rsi(prices, period=14):
+        if len(prices) < period + 1:
+            return 50  # Default neutral RSI
+        
+        deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
+        gains = [d if d > 0 else 0 for d in deltas]
+        losses = [-d if d < 0 else 0 for d in deltas]
+        
+        # Use simple moving average for RSI
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
+        
+        if avg_loss == 0:
+            return 100 if avg_gain > 0 else 50
+        
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+    
+    rsi14 = calculate_rsi(closes)
+    
+    # Calculate ATR (20-period)
+    def calculate_atr(highs, lows, closes, period=20):
+        trs = []
+        for i in range(1, len(highs)):
+            high_low = highs[i] - lows[i]
+            high_close = abs(highs[i] - closes[i-1])
+            low_close = abs(lows[i] - closes[i-1])
+            tr = max(high_low, high_close, low_close)
+            trs.append(tr)
+        
+        if len(trs) >= period:
+            return sum(trs[-period:]) / period
+        return 0
+    
+    atr20 = calculate_atr(highs, lows, closes)
+    
+    # Calculate volume average (10-day, excluding current)
+    volume_avg_10d = sum(volumes[-11:-1]) / 10 if len(volumes) > 10 else volumes[-1]
+    
+    # Gap percentage
+    if len(closes) > 1 and closes[-2] != 0:
+        gap_percent = ((opens[-1] - closes[-2]) / closes[-2]) * 100
+    else:
+        gap_percent = 0
+    
+    return {
+        'close': closes[-1],
+        'sma20': sma20,
+        'sma50': sma50,
+        'high20': high20,
+        'rsi14': rsi14,
+        'atr20': atr20,
+        'volume': volumes[-1],
+        'volume_avg_10d': volume_avg_10d,
+        'gap_percent': gap_percent
+    }
+
+def calculate_proper_score(indicators):
+    """Calculate weighted composite score based on actual indicators."""
+    if not indicators:
+        return 0
+    
+    # Extract values
+    close = indicators['close']
+    high20 = indicators['high20']
+    sma50 = indicators['sma50']
+    rsi14 = indicators['rsi14']
+    volume = indicators['volume']
+    volume_avg = indicators['volume_avg_10d']
+    
+    # Component 1: Pullback proximity (30% weight)
+    if high20 > 0:
+        pullback = (1 - close / high20) * 100
+        pullback = max(0, min(100, pullback))  # Clamp to 0-100
+    else:
+        pullback = 0
+    
+    # Component 2: Trend strength (25% weight)
+    if sma50 > 0:
+        trend = ((close / sma50) - 1) * 100
+        trend = max(0, min(100, trend))  # Clamp to 0-100
+    else:
+        trend = 0
+    
+    # Component 3: RSI headroom (25% weight)
+    rsi_room = 70 - rsi14
+    rsi_room = max(0, min(100, rsi_room))  # Clamp to 0-100
+    
+    # Component 4: Volume ratio (20% weight)
+    if volume_avg > 0:
+        vol_ratio = (volume / volume_avg) * 20
+        vol_ratio = max(0, min(100, vol_ratio))  # Clamp to 0-100
+    else:
+        vol_ratio = 0
+    
+    # Calculate weighted score
+    score = (
+        pullback * 0.30 +
+        trend * 0.25 +
+        rsi_room * 0.25 +
+        vol_ratio * 0.20
+    )
+    
+    return max(0, min(100, score))  # Final clamp to 0-100
+
+def determine_action(score, indicators):
+    """Determine trading action based on score and RSI."""
+    if not indicators:
+        return 'AVOID'
+    
+    rsi = indicators['rsi14']
+    close = indicators['close']
+    sma50 = indicators['sma50']
+    
+    # Never buy overbought stocks
+    if rsi > 70:
+        return 'AVOID'
+    
+    # Reduce score if below 50-day average (weak trend)
+    if sma50 > 0 and close < sma50:
+        score = score * 0.7
+    
+    # Apply thresholds with RSI safety checks
+    if score >= 15 and rsi < 60:
+        return 'BUY'
+    elif score >= 10 and rsi < 65:
+        return 'WATCH'
+    else:
+        return 'AVOID'
+
 # Store active scans
 active_scans = {}
 
@@ -245,77 +417,109 @@ class WorkingHandler(http.server.SimpleHTTPRequestHandler):
                               'NVDA', 'META', 'TSLA', 'JPM', 'V', 'JNJ', 'WMT', 
                               'PG', 'MA', 'UNH', 'HD', 'DIS', 'BAC', 'XOM']
         
-        # For demo purposes, limit to first 50 stocks to avoid rate limits
+        # For demo purposes, limit to first 30 stocks to avoid rate limits
         # In production, you'd want to batch these properly
-        if len(all_tickers) > 50 and not active_scans[run_id].get('custom_tickers'):
-            # Take a random sample of 50 stocks for S&P 500
+        if len(all_tickers) > 30 and not active_scans[run_id].get('custom_tickers'):
+            # Take a random sample of 30 stocks for S&P 500
             import random
-            all_tickers = random.sample(all_tickers, min(50, len(all_tickers)))
+            all_tickers = random.sample(all_tickers, min(30, len(all_tickers)))
         
-        # Generate dynamic scores and RSI values for all tickers
-        stocks = []
-        for ticker in all_tickers:
-            # Generate semi-random but consistent scores based on ticker hash
-            # This ensures some variation while being deterministic per ticker
-            ticker_hash = sum(ord(c) for c in ticker)
-            base_score = (ticker_hash % 20) + random.uniform(-5, 5)
-            base_rsi = 30 + (ticker_hash % 40) + random.uniform(-10, 10)
+        # Process each ticker with real data
+        stocks_with_scores = []
+        active_scans[run_id]['progress']['total'] = len(all_tickers)
+        
+        for i, ticker in enumerate(all_tickers):
+            try:
+                # Get historical data
+                bars = get_historical_data(ticker)
+                
+                if bars:
+                    # Calculate indicators
+                    indicators = calculate_indicators(bars)
+                    
+                    if indicators:
+                        # Calculate proper score
+                        score = calculate_proper_score(indicators)
+                        
+                        # Determine action
+                        action = determine_action(score, indicators)
+                        
+                        stocks_with_scores.append({
+                            'symbol': ticker,
+                            'indicators': indicators,
+                            'score': score,
+                            'action': action
+                        })
+                else:
+                    # Fallback for stocks with no data
+                    print(f"No historical data for {ticker}, using fallback")
+                    stocks_with_scores.append({
+                        'symbol': ticker,
+                        'indicators': {
+                            'close': get_real_price(ticker),
+                            'rsi14': 50,
+                            'volume': 1000000,
+                            'gap_percent': 0
+                        },
+                        'score': 5,
+                        'action': 'AVOID'
+                    })
+            except Exception as e:
+                print(f"Error processing {ticker}: {e}")
+                # Fallback for errors
+                stocks_with_scores.append({
+                    'symbol': ticker,
+                    'indicators': {
+                        'close': get_real_price(ticker),
+                        'rsi14': 50,
+                        'volume': 1000000,
+                        'gap_percent': 0
+                    },
+                    'score': 5,
+                    'action': 'AVOID'
+                })
             
-            # Ensure values are within valid ranges
-            score = max(0.5, min(25, base_score))
-            rsi = max(20, min(80, base_rsi))
-            
-            stocks.append({
-                'symbol': ticker,
-                'score': round(score, 1),
-                'rsi': round(rsi, 1)
-            })
+            # Update progress
+            active_scans[run_id]['progress']['done'] = i + 1
+            time.sleep(0.2)  # Small delay to avoid rate limiting
         
         # Sort by score descending
-        stocks.sort(key=lambda x: x['score'], reverse=True)
+        stocks_with_scores.sort(key=lambda x: x['score'], reverse=True)
         
-        # Update total for progress bar
-        active_scans[run_id]['progress']['total'] = len(stocks)
-        
+        # Format results for UI
         results = []
-        for i, stock in enumerate(stocks):
-            # Get real price from Alpaca
-            real_price = get_real_price(stock['symbol'])
+        for stock_data in stocks_with_scores:
+            indicators = stock_data['indicators']
+            close = indicators['close']
+            action = stock_data['action']
             
-            # Determine action and targets
-            if stock['score'] >= 15:
-                action = 'BUY'
-                entry = real_price * 1.002
-                stop = real_price * 0.97
-                target1 = real_price * 1.05  # 5% gain
-                target2 = real_price * 1.08  # 8% gain
-            elif stock['score'] >= 10:
-                action = 'WATCH'
-                entry = real_price * 0.99
+            # Calculate entry and targets based on action
+            if action == 'BUY':
+                entry = close * 1.002
+                stop = close * 0.97
+                target1 = close * 1.05  # 5% gain
+                target2 = close * 1.08  # 8% gain
+            elif action == 'WATCH':
+                entry = close * 0.99
                 stop = entry * 0.97
                 target1 = entry * 1.03  # 3% gain
                 target2 = entry * 1.05  # 5% gain
             else:
-                action = 'AVOID'
                 entry = stop = target1 = target2 = 0
             
             results.append({
-                'symbol': stock['symbol'],
-                'close': round(real_price, 2),
-                'score': stock['score'],
-                'rsi14': stock['rsi'],
+                'symbol': stock_data['symbol'],
+                'close': round(close, 2),
+                'score': round(stock_data['score'], 1),
+                'rsi14': round(indicators.get('rsi14', 50), 1),
                 'action': action,
                 'entry_price': round(entry, 2) if entry else None,
                 'stop_loss': round(stop, 2) if stop else None,
                 'target_1': round(target1, 2) if target1 else None,
                 'target_2': round(target2, 2) if target2 else None,
-                'gap_percent': round((i - 5) * 0.3, 1),
-                'volume': 10000000
+                'gap_percent': round(indicators.get('gap_percent', 0), 1),
+                'volume': indicators.get('volume', 0)
             })
-            
-            # Update progress
-            active_scans[run_id]['progress']['done'] = i + 1
-            time.sleep(0.3)
         
         active_scans[run_id]['state'] = 'done'
         active_scans[run_id]['results'] = results
