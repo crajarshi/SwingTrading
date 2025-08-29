@@ -191,7 +191,9 @@
             color: white;
             padding: 15px;
             border-radius: 8px;
-            width: 320px;
+            width: 450px;
+            max-height: 600px;
+            overflow-y: auto;
             z-index: 1000;
             margin-bottom: 10px;
             font-size: 13px;
@@ -452,6 +454,183 @@
             }
         }
         
+        // Toggle score details expansion
+        function toggleScoreDetails(row, result) {
+            const nextRow = row.nextElementSibling;
+            
+            // Check if details row already exists
+            if (nextRow && nextRow.classList.contains('score-details-row')) {
+                // Remove it if it exists
+                nextRow.remove();
+                row.querySelector('.score-cell span:last-child').textContent = '▼';
+            } else {
+                // Create and insert details row
+                const detailsRow = document.createElement('tr');
+                detailsRow.classList.add('score-details-row');
+                detailsRow.innerHTML = `
+                    <td colspan="9" style="padding: 20px; background: #f8f9fa; border: 1px solid #dee2e6;">
+                        ${createScoreDetailsHTML(result)}
+                    </td>
+                `;
+                row.after(detailsRow);
+                row.querySelector('.score-cell span:last-child').textContent = '▲';
+            }
+        }
+        
+        // Create HTML for score details
+        function createScoreDetailsHTML(result) {
+            if (!result.score_components) {
+                return '<p>Score component details not available. Please run a new scan.</p>';
+            }
+            
+            const c = result.score_components;
+            let html = `
+                <div style="max-width: 800px; margin: 0 auto;">
+                    <h3 style="margin: 0 0 20px 0; color: #2c3e50;">
+                        ${result.symbol} Score Calculation: ${result.score.toFixed(1)}
+                    </h3>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+            `;
+            
+            // Volume Component (35%)
+            if (c.volume) {
+                const volScore = c.volume.score || 0;
+                const volWeighted = c.volume.weighted || 0;
+                const volRatio = c.volume.ratio || 0;
+                const volPercent = (volWeighted / result.score * 100).toFixed(1);
+                
+                html += `
+                    <div style="border: 1px solid #3498db; border-radius: 8px; padding: 15px; background: rgba(52, 152, 219, 0.05);">
+                        <h4 style="margin: 0 0 10px 0; color: #3498db;">Volume (35% weight)</h4>
+                        <div style="font-size: 14px; line-height: 1.6;">
+                            <div>Current Volume: <strong>${(c.volume.current || 0).toLocaleString()}</strong></div>
+                            <div>10-day Average: <strong>${(c.volume.average || 0).toLocaleString()}</strong></div>
+                            <div>Volume Ratio: <strong>${volRatio.toFixed(2)}x</strong></div>
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #3498db;">
+                                Raw Score: ${volScore.toFixed(1)}<br>
+                                <strong>${volScore.toFixed(1)} × 0.35 = ${volWeighted.toFixed(1)} pts (${volPercent}% of total)</strong>
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <div style="background: #e0e0e0; height: 20px; border-radius: 10px; overflow: hidden;">
+                                    <div style="background: #3498db; height: 100%; width: ${Math.min(100, volScore)}%; text-align: center; color: white; font-size: 12px; line-height: 20px;">
+                                        ${volScore.toFixed(0)}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Pullback Component (25%)
+            if (c.pullback) {
+                const pullScore = c.pullback.score || 0;
+                const pullWeighted = c.pullback.weighted || 0;
+                const pctBelowHigh = c.pullback.pct_below_high || 0;
+                const pullPercent = (pullWeighted / result.score * 100).toFixed(1);
+                
+                html += `
+                    <div style="border: 1px solid #2ecc71; border-radius: 8px; padding: 15px; background: rgba(46, 204, 113, 0.05);">
+                        <h4 style="margin: 0 0 10px 0; color: #2ecc71;">Pullback (25% weight)</h4>
+                        <div style="font-size: 14px; line-height: 1.6;">
+                            <div>20-day High: <strong>$${(c.pullback.high20 || 0).toFixed(2)}</strong></div>
+                            <div>Current Price: <strong>$${result.close}</strong></div>
+                            <div>Below High: <strong>${pctBelowHigh.toFixed(1)}%</strong></div>
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #2ecc71;">
+                                Raw Score: ${pullScore.toFixed(1)}<br>
+                                <strong>${pullScore.toFixed(1)} × 0.25 = ${pullWeighted.toFixed(1)} pts (${pullPercent}% of total)</strong>
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <div style="background: #e0e0e0; height: 20px; border-radius: 10px; overflow: hidden;">
+                                    <div style="background: #2ecc71; height: 100%; width: ${Math.min(100, pullScore)}%; text-align: center; color: white; font-size: 12px; line-height: 20px;">
+                                        ${pullScore.toFixed(0)}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Trend Component (20%)
+            if (c.trend) {
+                const trendScore = c.trend.score || 0;
+                const trendWeighted = c.trend.weighted || 0;
+                const pctVsSma50 = c.trend.pct_vs_sma50 || 0;
+                const trendPercent = (trendWeighted / result.score * 100).toFixed(1);
+                
+                html += `
+                    <div style="border: 1px solid #f39c12; border-radius: 8px; padding: 15px; background: rgba(243, 156, 18, 0.05);">
+                        <h4 style="margin: 0 0 10px 0; color: #f39c12;">Trend (20% weight)</h4>
+                        <div style="font-size: 14px; line-height: 1.6;">
+                            <div>SMA50: <strong>$${(c.trend.sma50 || 0).toFixed(2)}</strong></div>
+                            <div>Current Price: <strong>$${result.close}</strong></div>
+                            <div>vs SMA50: <strong>${pctVsSma50 > 0 ? '+' : ''}${pctVsSma50.toFixed(1)}%</strong></div>
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #f39c12;">
+                                Raw Score: ${trendScore.toFixed(1)}<br>
+                                <strong>${trendScore.toFixed(1)} × 0.20 = ${trendWeighted.toFixed(1)} pts (${trendPercent}% of total)</strong>
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <div style="background: #e0e0e0; height: 20px; border-radius: 10px; overflow: hidden;">
+                                    <div style="background: #f39c12; height: 100%; width: ${Math.min(100, trendScore)}%; text-align: center; color: white; font-size: 12px; line-height: 20px;">
+                                        ${trendScore.toFixed(0)}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // RSI Component (20%)
+            if (c.rsi) {
+                const rsiScore = c.rsi.score || 0;
+                const rsiWeighted = c.rsi.weighted || 0;
+                const rsiValue = c.rsi.value || 0;
+                const rsiHeadroom = c.rsi.headroom || 0;
+                const rsiPercent = (rsiWeighted / result.score * 100).toFixed(1);
+                
+                html += `
+                    <div style="border: 1px solid #9b59b6; border-radius: 8px; padding: 15px; background: rgba(155, 89, 182, 0.05);">
+                        <h4 style="margin: 0 0 10px 0; color: #9b59b6;">RSI Room (20% weight)</h4>
+                        <div style="font-size: 14px; line-height: 1.6;">
+                            <div>Current RSI: <strong>${rsiValue.toFixed(1)}</strong></div>
+                            <div>Overbought Level: <strong>70</strong></div>
+                            <div>Room to Grow: <strong>${rsiHeadroom.toFixed(0)} pts</strong></div>
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #9b59b6;">
+                                Raw Score: ${rsiScore.toFixed(1)}<br>
+                                <strong>${rsiScore.toFixed(1)} × 0.20 = ${rsiWeighted.toFixed(1)} pts (${rsiPercent}% of total)</strong>
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <div style="background: #e0e0e0; height: 20px; border-radius: 10px; overflow: hidden;">
+                                    <div style="background: #9b59b6; height: 100%; width: ${Math.min(100, rsiScore)}%; text-align: center; color: white; font-size: 12px; line-height: 20px;">
+                                        ${rsiScore.toFixed(0)}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            html += `
+                    </div>
+                    
+                    <div style="background: #2c3e50; color: white; padding: 15px; border-radius: 8px; text-align: center; font-size: 18px;">
+                        <strong>Final Score Calculation:</strong><br>
+                        ${(c.volume && c.volume.weighted || 0).toFixed(1)} + 
+                        ${(c.pullback && c.pullback.weighted || 0).toFixed(1)} + 
+                        ${(c.trend && c.trend.weighted || 0).toFixed(1)} + 
+                        ${(c.rsi && c.rsi.weighted || 0).toFixed(1)} = 
+                        <span style="font-size: 24px; color: #3498db;">${result.score.toFixed(1)}</span>
+                    </div>
+                </div>
+            `;
+            
+            return html;
+        }
+        
         // Display results
         function displayResults(results) {
             document.getElementById('progress').style.display = 'none';
@@ -469,71 +648,19 @@
                 else if (result.action === 'WATCH') actionClass = 'action-watch';
                 else actionClass = 'action-avoid';
                 
-                // Build tooltip content with real component data
-                let tooltipContent = '<strong>Score Breakdown:</strong><br>';
-                
-                // Debug logging
-                console.log(`Score components for ${result.symbol}:`, result.score_components);
-                
+                // Log score components for debugging
                 if (result.score_components) {
-                    const c = result.score_components;
-                    tooltipContent += '<br>';
-                    tooltipContent += `<div style="font-size: 11px; color: #aaa;">Total Score: ${result.score.toFixed(1)}</div><br>`;
-                    
-                    // Volume component (35% - HIGHEST WEIGHT)
-                    if (c.volume) {
-                        const volWeighted = c.volume.weighted || 0;
-                        const volRatio = c.volume.ratio || 0;
-                        tooltipContent += `<b>Volume (35%):</b> ${volWeighted.toFixed(1)} pts<br>`;
-                        tooltipContent += `&nbsp;&nbsp;• ${volRatio.toFixed(1)}x 10-day average<br><br>`;
-                    }
-                    
-                    // Pullback component (25%)
-                    if (c.pullback) {
-                        const pullbackWeighted = c.pullback.weighted || 0;
-                        const pctBelowHigh = c.pullback.pct_below_high || 0;
-                        tooltipContent += `<b>Pullback (25%):</b> ${pullbackWeighted.toFixed(1)} pts<br>`;
-                        tooltipContent += `&nbsp;&nbsp;• ${pctBelowHigh.toFixed(1)}% below 20-day high<br><br>`;
-                    }
-                    
-                    // Trend component (20%)
-                    if (c.trend) {
-                        const trendWeighted = c.trend.weighted || 0;
-                        const pctVsSma50 = c.trend.pct_vs_sma50 || 0;
-                        tooltipContent += `<b>Trend (20%):</b> ${trendWeighted.toFixed(1)} pts<br>`;
-                        tooltipContent += `&nbsp;&nbsp;• ${pctVsSma50 > 0 ? '+' : ''}${pctVsSma50.toFixed(1)}% vs SMA50<br><br>`;
-                    }
-                    
-                    // RSI Room component (20%)
-                    if (c.rsi) {
-                        const rsiWeighted = c.rsi.weighted || 0;
-                        const rsiValue = c.rsi.value || 0;
-                        const rsiHeadroom = c.rsi.headroom || 0;
-                        tooltipContent += `<b>RSI Room (20%):</b> ${rsiWeighted.toFixed(1)} pts<br>`;
-                        tooltipContent += `&nbsp;&nbsp;• RSI at ${rsiValue.toFixed(1)} (${rsiHeadroom.toFixed(0)} pts from 70)<br>`;
-                    }
-                    
-                    // Add calculation summary
-                    tooltipContent += `<br><div style="border-top: 1px solid #555; padding-top: 8px; font-size: 11px;">`;
-                    tooltipContent += `Formula: (Vol×0.35) + (Pull×0.25) + (Trend×0.20) + (RSI×0.20)`;
-                    tooltipContent += `</div>`;
+                    console.log(`${result.symbol} Score Components:`, result.score_components);
                 } else {
-                    // Fallback for old data without components
                     console.warn(`No score components for ${result.symbol}`);
-                    tooltipContent += 'Component details not available';
                 }
                 
                 row.innerHTML = `
                     <td><strong>${result.symbol}</strong></td>
                     <td>$${result.close}</td>
-                    <td>
-                        ${result.score.toFixed(1)}
-                        <span class="score-breakdown">
-                            <span style="cursor: help; text-decoration: underline; color: #3498db;">[?]</span>
-                            <div class="score-tooltip">
-                                ${tooltipContent}
-                            </div>
-                        </span>
+                    <td class="score-cell" style="cursor: pointer;">
+                        <span style="font-weight: bold;">${result.score.toFixed(1)}</span>
+                        <span style="color: #3498db; margin-left: 5px; font-size: 12px;">▼</span>
                     </td>
                     <td>${result.rsi14.toFixed(1)}</td>
                     <td class="${actionClass}">${result.action}</td>
@@ -543,19 +670,16 @@
                     <td>${result.target_2 ? '$' + result.target_2 : '-'}</td>
                 `;
                 
-                // Add click handler
-                row.style.cursor = 'pointer';
-                row.onclick = () => {
-                    alert(`${result.symbol} Trading Plan:\n\n` +
-                          `Current Price: $${result.close}\n` +
-                          `Score: ${result.score}\n` +
-                          `RSI: ${result.rsi14}\n` +
-                          `Action: ${result.action}\n` +
-                          (result.entry_price ? `\nEntry: $${result.entry_price}\n` +
-                          `Stop Loss: $${result.stop_loss} (-${((1 - result.stop_loss/result.close) * 100).toFixed(1)}%)\n` +
-                          `Target 1: $${result.target_1} (+${((result.target_1/result.close - 1) * 100).toFixed(1)}%)\n` +
-                          `Target 2: $${result.target_2} (+${((result.target_2/result.close - 1) * 100).toFixed(1)}%)\n\n` +
-                          `Strategy: Sell 50% at T1, rest at T2` : ''));
+                // Store the detailed breakdown for this row
+                row.scoreDetails = result.score_components;
+                row.symbol = result.symbol;
+                row.score = result.score;
+                
+                // Add click handler for score cell
+                const scoreCell = row.querySelector('.score-cell');
+                scoreCell.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleScoreDetails(row, result);
                 };
             });
             
