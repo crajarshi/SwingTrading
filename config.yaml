@@ -1,0 +1,90 @@
+# SwingTrading Configuration
+# Paper Trading & EOD Reporting Settings
+
+# Scanner configuration (existing functionality)
+scanner:
+  universe_file: "sp500_tickers.txt"  # Path to ticker list
+  days_history: 550                   # Days of historical data to fetch
+  min_bars_required: 250               # Minimum bars for scoring
+  cache_enabled: true                  # Use SQLite cache for data
+
+# Paper trading configuration
+paper_trading:
+  enabled: true
+  paper_base_url: "https://paper-api.alpaca.markets"
+  account_id_alias: "default"
+  
+  # Schedule (all times in ET, automatically handled for DST)
+  schedule:
+    scan_time_et: "16:10"       # Run scanner after market close
+    reconcile_time_et: "09:25"  # Morning reconciliation
+    place_time_et: "09:28"      # Place entries for market open
+    report_time_et: "16:20"     # Generate EOD report
+  
+  # Entry criteria
+  entry:
+    max_symbols: 10             # Max new positions per day
+    min_score: 65               # Minimum score threshold
+    sort_by: "score"            # Secondary: "rsi_room", "pullback"
+    
+  # Position sizing
+  sizing:
+    risk_per_trade_pct: 0.5     # % of equity at risk per trade
+    max_gross_exposure_pct: 100 # Maximum total exposure
+    max_pos_pct_of_equity: 10   # Max position as % of equity
+    min_notional: 200           # Minimum position size ($)
+    min_price: 2.00             # Skip stocks below this price
+    allow_penny_stocks: false   # Override min_price if true
+    
+  # Risk management
+  risk:
+    stop_atr_mult: 1.5          # Stop = entry - (ATR * mult)
+    target_atr_mult: 3.0        # Target = entry + (ATR * mult)
+    time_exit_days: 10          # Maximum holding period
+    
+  # Order configuration
+  order:
+    type: "bracket"             # Use Alpaca bracket orders
+    entry_style: "market-now"   # "open" (MOO/LOO) or "market-now"
+    price_buffer_bps: 15        # Buffer for limit-on-open orders
+    fallback_strategy: "auto"  # "auto", "opg_then_oco", "day_bracket"
+    
+  # Exclusions
+  exclusions:
+    leverage_etf: true          # Skip leveraged ETFs
+    leverage_patterns:          # Patterns to identify leveraged ETFs
+      - "TQQQ"
+      - "SQQQ"
+      - "SPXU"
+      - "SPXS"
+      - "UVXY"
+      - "VXX"
+      - "SOXL"
+      - "SOXS"
+    earnings_within_days: 2     # Skip if earnings within N days
+    
+  # Reporting
+  reporting:
+    out_dir: "reports"          # Output directory for reports
+    include_unrealized: true    # Include unrealized P&L
+    top_n_contributors: 5       # Top contributors to show
+    
+  # State management
+  state:
+    dir: "state"                # State directory
+    stale_intent_days: 3        # Clean intents after N days
+    persist_equity: true        # Track equity history
+    
+# Market calendar settings
+market:
+  timezone: "America/New_York"  # Locked timezone for all operations
+  calendar: "NYSE"               # Market calendar to use
+  handle_holidays: true          # Auto-adjust for holidays
+  handle_early_close: true       # Auto-adjust for half days
+
+# Logging
+logging:
+  level: "INFO"                  # DEBUG, INFO, WARNING, ERROR
+  file: "paper_trading.log"      # Log file path
+  max_size_mb: 50                # Max log file size
+  backup_count: 5                # Number of backup files to keep

@@ -41,3 +41,9 @@ cache/
 htmlcov/
 .tox/
 .nox/
+
+# Paper Trading State & Reports
+state/
+reports/
+paper_trading.log
+*.log

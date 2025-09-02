@@ -12,6 +12,7 @@ A production-ready market scanner for identifying swing trading opportunities us
 - 📈 **Market Regime Filter**: SPY RSI-based market condition check
 - 🔄 **Session Detection**: Pure data-driven trading session detection
 - 📋 **Export Options**: CSV results and JSON metadata
+- 🤖 **Paper Trading**: Automated paper trading with bracket orders and EOD reporting
 
 ## Requirements
 
@@ -67,6 +68,23 @@ swing-scan --ticker AAPL
 # Run with debug output
 swing-scan --debug
 ```
+
+### 3. Paper Trading (NEW!)
+
+Fully automated paper trading system with daily scanning, order placement, and P&L reporting.
+
+```bash
+# Test paper trading setup
+python test_paper_trading.py
+
+# Daily workflow
+python cli/paper.py scan      # 4:10 PM ET - Find candidates
+python cli/paper.py place     # 9:28 AM ET - Place orders
+python cli/paper.py report    # 4:20 PM ET - EOD report
+python cli/paper.py positions # Check positions anytime
+```
+
+See [PAPER_TRADING_README.md](PAPER_TRADING_README.md) for complete documentation.
 
 ## Configuration
 
@@ -248,13 +266,20 @@ mypy src/
 
 ```
 SwingTrading/
-├── src/swingtrading/     # Main package
-│   ├── main.py          # CLI entry point
-│   ├── scanner.py       # Core scanning logic
-│   ├── data_provider.py # Alpaca integration
-│   ├── cache_manager.py # Cache handling
-│   └── ...
-├── tests/               # Test suite
+├── src/swingtrading/     # Main package (if using package structure)
+├── scoring_v2/          # Scoring engine modules
+├── broker/              # Paper trading broker integration
+│   ├── alpaca_adapter.py
+│   └── market_calendar.py
+├── trading/             # Trading logic
+│   ├── paper_engine.py
+│   ├── executor.py
+│   └── position_manager.py
+├── reporting/           # EOD reporting
+├── cli/                 # Command-line interface
+├── web/                 # Web UI
+├── state/              # Runtime state (git-ignored)
+├── reports/            # Daily reports (git-ignored)
 ├── config.yaml         # Configuration
 └── .env               # API credentials (not in git)
 ```
