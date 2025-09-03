@@ -276,6 +276,44 @@
         <span id="scan-status" style="margin-left: 20px;"></span>
     </div>
     
+    <!-- Paper Trading Controls -->
+    <div class="controls" style="background: #fff3cd; border: 2px solid #ffc107;">
+        <h3>Paper Trading</h3>
+        <div style="margin: 20px 0;">
+            <p style="margin-bottom: 15px; color: #856404;">
+                Automated paper trading with bracket orders and EOD reporting
+            </p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="runPaperScan()" style="background: #ffc107; color: #212529;">
+                    Scan for Candidates
+                </button>
+                <button onclick="placePaperOrders()" style="background: #28a745;">
+                    Place Orders
+                </button>
+                <button onclick="viewPositions()" style="background: #17a2b8;">
+                    View Positions
+                </button>
+                <button onclick="generateReport()" style="background: #6c757d;">
+                    Generate EOD Report
+                </button>
+            </div>
+            <div id="paper-status" style="margin-top: 15px; padding: 10px; background: white; border-radius: 5px; display: none;"></div>
+        </div>
+    </div>
+    
+    <!-- Paper Trading Progress -->
+    <div class="progress" id="paper-progress" style="display: none;">
+        <div class="progress-bar" id="paper-progress-bar">
+            <span id="paper-progress-text">0%</span>
+        </div>
+    </div>
+    
+    <!-- Paper Trading Results Table -->
+    <table id="paper-results-table" style="display: none;">
+        <thead id="paper-results-header"></thead>
+        <tbody id="paper-results"></tbody>
+    </table>
+    
     <div class="progress" id="progress">
         <div class="progress-bar" id="progress-bar">
             <span id="progress-text">0%</span>
@@ -690,6 +728,309 @@
             } else {
                 console.log('Topic not found:', topicKey);
                 console.log('Available topics:', Object.keys(knowledge));
+            }
+        }
+        
+        // Paper Trading Functions
+        let activePaperScanId = null;
+        
+        async function runPaperScan() {
+            console.log('Starting paper trading scan...');
+            
+            // Clear old results
+            document.getElementById('paper-results').innerHTML = '';
+            document.getElementById('paper-results-table').style.display = 'none';
+            document.getElementById('paper-status').style.display = 'block';
+            document.getElementById('paper-status').innerHTML = '<strong>Starting paper scan...</strong>';
+            
+            // Show progress
+            document.getElementById('paper-progress').style.display = 'block';
+            
+            try {
+                const response = await fetch('/api/paper/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('paper-status').innerHTML = 
+                        `<span style="color: #dc3545;">Error: ${data.error}</span>`;
+                    document.getElementById('paper-progress').style.display = 'none';
+                    return;
+                }
+                
+                activePaperScanId = data.run_id;
+                
+                // Poll for progress with timeout
+                let pollCount = 0;
+                const maxPolls = 600; // 5 minutes max (600 * 500ms)
+                
+                const interval = setInterval(async () => {
+                    pollCount++;
+                    
+                    // Timeout after max polls
+                    if (pollCount > maxPolls) {
+                        clearInterval(interval);
+                        document.getElementById('paper-progress').style.display = 'none';
+                        document.getElementById('paper-status').innerHTML = 
+                            '<span style="color: #dc3545;">Scan timeout - please try again</span>';
+                        return;
+                    }
+                    
+                    try {
+                        const statusResponse = await fetch(`/api/paper/scan/${activePaperScanId}/status`);
+                        const status = await statusResponse.json();
+                        
+                        // Update progress
+                        if (status.state === 'running' && status.progress) {
+                            const progress = (status.progress.done / status.progress.total) * 100;
+                            document.getElementById('paper-progress-bar').style.width = progress + '%';
+                            document.getElementById('paper-progress-text').textContent = 
+                                `${status.progress.done}/${status.progress.total}`;
+                        }
+                        
+                        // Handle completion
+                        if (status.state === 'done') {
+                            clearInterval(interval);
+                            document.getElementById('paper-progress').style.display = 'none';
+                            
+                            console.log('Scan complete, results:', status.results);
+                            // Display results
+                            displayPaperScanResults(status.results);
+                        }
+                        
+                        // Handle errors
+                        if (status.state === 'error') {
+                            clearInterval(interval);
+                            document.getElementById('paper-progress').style.display = 'none';
+                            document.getElementById('paper-status').innerHTML = 
+                                `<span style="color: #dc3545;">Scan failed: ${status.error || 'Unknown error'}</span>`;
+                        }
+                    } catch (error) {
+                        // Handle fetch errors
+                        console.error('Status fetch failed:', error);
+                    }
+                }, 500);
+                
+            } catch (error) {
+                console.error('Paper scan failed:', error);
+                document.getElementById('paper-status').innerHTML = 
+                    `<span style="color: #dc3545;">Scan failed: ${error.message}</span>`;
+                document.getElementById('paper-progress').style.display = 'none';
+            }
+        }
+        
+        function displayPaperScanResults(results) {
+            console.log('displayPaperScanResults called with:', results);
+            const status = document.getElementById('paper-status');
+            
+            if (!results || results.length === 0) {
+                status.innerHTML = '<span style="color: #856404;">No candidates found meeting criteria</span>';
+                document.getElementById('paper-results-table').style.display = 'none';
+                return;
+            }
+            
+            status.innerHTML = `<strong style="color: #155724;">Found ${results.length} candidates for paper trading</strong>`;
+            
+            // Create table
+            const table = document.getElementById('paper-results-table');
+            const header = document.getElementById('paper-results-header');
+            const tbody = document.getElementById('paper-results');
+            
+            // Clear existing content
+            header.innerHTML = '';
+            tbody.innerHTML = '';
+            
+            // Create header row
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = `
+                <th>Symbol</th>
+                <th>Score</th>
+                <th>Entry</th>
+                <th>Stop</th>
+                <th>Target</th>
+                <th>Shares</th>
+                <th>Risk</th>
+            `;
+            header.appendChild(headerRow);
+            
+            // Add data rows
+            results.forEach(result => {
+                const row = document.createElement('tr');
+                // Handle market orders with no entry_price
+                const entryPrice = result.entry_price || 'Market';
+                const entryDisplay = entryPrice === 'Market' ? 'Market' : `$${entryPrice.toFixed(2)}`;
+                
+                row.innerHTML = `
+                    <td><strong>${result.symbol}</strong></td>
+                    <td>${result.score.toFixed(1)}</td>
+                    <td>${entryDisplay}</td>
+                    <td>$${result.stop_price.toFixed(2)}</td>
+                    <td>$${result.target_price.toFixed(2)}</td>
+                    <td>${result.shares}</td>
+                    <td>$${result.risk_amount.toFixed(2)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Show the table
+            table.style.display = 'table';
+        }
+        
+        async function placePaperOrders() {
+            const status = document.getElementById('paper-status');
+            status.style.display = 'block';
+            status.innerHTML = '<strong>Placing paper orders...</strong>';
+            
+            try {
+                const response = await fetch('/api/paper/place', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        run_id: activePaperScanId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    status.innerHTML = `<span style="color: #dc3545;">Error: ${data.error}</span>`;
+                    return;
+                }
+                
+                if (data.orders && data.orders.length > 0) {
+                    status.innerHTML = `<strong style="color: #155724;">Successfully placed ${data.orders.length} orders</strong>`;
+                    
+                    // Display order details
+                    let orderDetails = '<div style="margin-top: 10px; font-size: 14px;">';
+                    data.orders.forEach(order => {
+                        orderDetails += `<div>• ${order.symbol}: ${order.qty} shares @ ${order.order_type === 'market' ? 'market' : '$' + order.limit_price}</div>`;
+                    });
+                    orderDetails += '</div>';
+                    status.innerHTML += orderDetails;
+                } else {
+                    status.innerHTML = '<span style="color: #856404;">No orders were placed</span>';
+                }
+                
+            } catch (error) {
+                console.error('Failed to place orders:', error);
+                status.innerHTML = `<span style="color: #dc3545;">Failed to place orders: ${error.message}</span>`;
+            }
+        }
+        
+        async function viewPositions() {
+            const status = document.getElementById('paper-status');
+            status.style.display = 'block';
+            status.innerHTML = '<strong>Loading positions...</strong>';
+            
+            try {
+                const response = await fetch('/api/paper/positions');
+                const data = await response.json();
+                
+                if (data.error) {
+                    status.innerHTML = `<span style="color: #dc3545;">Error: ${data.error}</span>`;
+                    return;
+                }
+                
+                if (!data.positions || data.positions.length === 0) {
+                    status.innerHTML = '<span style="color: #856404;">No open positions</span>';
+                    document.getElementById('paper-results-table').style.display = 'none';
+                    return;
+                }
+                
+                status.innerHTML = `<strong style="color: #155724;">${data.positions.length} open position(s)</strong>`;
+                
+                // Display positions in table
+                const table = document.getElementById('paper-results-table');
+                const header = document.getElementById('paper-results-header');
+                const tbody = document.getElementById('paper-results');
+                
+                header.innerHTML = `
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Qty</th>
+                        <th>Entry</th>
+                        <th>Current</th>
+                        <th>P&L</th>
+                        <th>P&L %</th>
+                        <th>Value</th>
+                    </tr>
+                `;
+                
+                tbody.innerHTML = '';
+                data.positions.forEach(pos => {
+                    const row = tbody.insertRow();
+                    const plClass = pos.unrealized_pl >= 0 ? 'color: #155724;' : 'color: #dc3545;';
+                    row.innerHTML = `
+                        <td><strong>${pos.symbol}</strong></td>
+                        <td>${pos.qty}</td>
+                        <td>$${parseFloat(pos.avg_entry_price).toFixed(2)}</td>
+                        <td>$${parseFloat(pos.current_price || 0).toFixed(2)}</td>
+                        <td style="${plClass}">$${parseFloat(pos.unrealized_pl || 0).toFixed(2)}</td>
+                        <td style="${plClass}">${parseFloat(pos.unrealized_plpc || 0).toFixed(2)}%</td>
+                        <td>$${parseFloat(pos.market_value || 0).toFixed(2)}</td>
+                    `;
+                });
+                
+                table.style.display = 'table';
+                
+            } catch (error) {
+                console.error('Failed to load positions:', error);
+                status.innerHTML = `<span style="color: #dc3545;">Failed to load positions: ${error.message}</span>`;
+            }
+        }
+        
+        async function generateReport() {
+            const status = document.getElementById('paper-status');
+            status.style.display = 'block';
+            status.innerHTML = '<strong>Generating EOD report...</strong>';
+            
+            try {
+                const response = await fetch('/api/paper/report', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                console.log('EOD report response:', data);
+                
+                if (data.error) {
+                    status.innerHTML = `<span style="color: #dc3545;">Error: ${data.error}</span>`;
+                    return;
+                }
+                
+                // Display report summary
+                let reportHtml = '<div style="background: white; padding: 15px; border-radius: 5px;">';
+                reportHtml += '<h4 style="margin: 0 0 15px 0;">EOD Report Summary</h4>';
+                
+                if (data.summary) {
+                    const s = data.summary;
+                    const plColor = s.total_pl >= 0 ? '#155724' : '#dc3545';
+                    reportHtml += `
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                            <div><strong>Date:</strong> ${s.date}</div>
+                            <div><strong>Total P&L:</strong> <span style="color: ${s.total_pl >= 0 ? '#155724' : '#dc3545'}">$${s.total_pl.toFixed(2)}</span></div>
+                            <div><strong>Open Positions:</strong> ${s.open_positions}</div>
+                            <div><strong>Closed Today:</strong> ${s.closed_today}</div>
+                            <div><strong>Account Value:</strong> $${s.account_value.toFixed(2)}</div>
+                        </div>
+                    `;
+                }
+                
+                if (data.report_path) {
+                    reportHtml += `<div style="margin-top: 15px;"><small>Full report saved to: ${data.report_path}</small></div>`;
+                }
+                
+                reportHtml += '</div>';
+                status.innerHTML = reportHtml;
+                
+            } catch (error) {
+                console.error('Failed to generate report:', error);
+                status.innerHTML = `<span style="color: #dc3545;">Failed to generate report: ${error.message}</span>`;
             }
         }
         

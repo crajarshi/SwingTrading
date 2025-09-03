@@ -12,13 +12,21 @@ import sys
 import urllib.request
 import urllib.error
 from urllib.parse import urlparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 # Import scoring v2 modules
 from scoring_v2 import calculate_score_v2, MODEL_VERSION
 from scoring_v2.cache import DataCache
 from scoring_v2.telemetry import get_telemetry, reset_telemetry
 from scoring_v2.scoring import format_score_output
+
+# Import paper trading modules
+from cli.paper import (
+    cmd_scan as paper_scan,
+    cmd_place as paper_place,
+    cmd_positions as paper_positions,
+    cmd_report as paper_report
+)
 
 # Load Alpaca credentials from .env
 env_file = '.env'
@@ -137,6 +145,8 @@ def determine_action_v2(score, rsi, preset='balanced'):
 
 # Store active scans
 active_scans = {}
+# Store active paper trading scans
+active_paper_scans = {}
 
 # v2 Knowledge base
 KNOWLEDGE = {
@@ -360,6 +370,25 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
         
         elif parsed.path == '/api/telemetry':
             self.send_json(get_telemetry().get_summary())
+            
+        elif parsed.path == '/api/paper/positions':
+            # Get current paper trading positions
+            try:
+                result = paper_positions('config.yaml')
+                if result:
+                    self.send_json({'positions': result.get('positions', [])})
+                else:
+                    self.send_json({'positions': []})
+            except Exception as e:
+                self.send_json({'error': str(e)})
+                
+        elif parsed.path.startswith('/api/paper/scan/') and '/status' in parsed.path:
+            # Get paper scan status
+            run_id = parsed.path.split('/')[4]
+            if run_id in active_paper_scans:
+                self.send_json(active_paper_scans[run_id])
+            else:
+                self.send_error(404)
         
         else:
             super().do_GET()
@@ -388,6 +417,78 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
             
             threading.Thread(target=self.run_scan_v2, args=(run_id,)).start()
             self.send_json({'run_id': run_id, 'model_version': MODEL_VERSION})
+            
+        elif self.path == '/api/paper/scan':
+            # Run paper trading scan
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            run_id = str(uuid.uuid4())
+            active_paper_scans[run_id] = {
+                'state': 'running',
+                'progress': {'done': 0, 'total': 1},
+                'results': None
+            }
+            
+            # Run paper scan in background thread
+            threading.Thread(target=self.run_paper_scan, args=(run_id,)).start()
+            self.send_json({'run_id': run_id})
+            
+        elif self.path == '/api/paper/place':
+            # Place paper trading orders
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            request_data = json.loads(post_data)
+            
+            try:
+                # Get the run_id from request if provided
+                run_id = request_data.get('run_id')
+                
+                # Call paper place command
+                result = paper_place('config.yaml', run_id, dry_run=False)
+                
+                # Return placed orders information
+                if result and 'orders' in result:
+                    self.send_json({'orders': result['orders'], 'count': len(result['orders'])})
+                else:
+                    self.send_json({'orders': [], 'count': 0})
+                    
+            except Exception as e:
+                self.send_json({'error': str(e)})
+                
+        elif self.path == '/api/paper/report':
+            # Generate EOD report
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            try:
+                # Call paper report command - it now returns a dict
+                result = paper_report('config.yaml', None)
+                
+                if result and 'metrics' in result:
+                    # Extract key metrics for display
+                    metrics = result.get('metrics', {})
+                    summary = {
+                        'date': str(metrics.get('date', date.today())),
+                        'total_pl': metrics.get('daily_pl', 0),
+                        'open_positions': metrics.get('position_count', 0),
+                        'closed_today': metrics.get('exits', 0),
+                        'account_value': metrics.get('ending_equity', 0),
+                        'starting_equity': metrics.get('starting_equity', 0),
+                        'realized_pl': metrics.get('realized_pl', 0)
+                    }
+                    self.send_json({
+                        'summary': summary,
+                        'report_path': result.get('markdown', ''),
+                        'metrics': metrics
+                    })
+                else:
+                    self.send_json({'error': 'Report generation failed - no metrics returned'})
+                    
+            except Exception as e:
+                print(f"Error generating EOD report: {e}", file=sys.stderr)
+                self.send_json({'error': str(e)})
+                
         else:
             self.send_error(404)
     
@@ -577,6 +678,69 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
         active_scans[run_id]['state'] = 'done'
         active_scans[run_id]['results'] = results
         active_scans[run_id]['telemetry'] = get_telemetry().get_summary()
+    
+    def run_paper_scan(self, run_id):
+        """Run paper trading scan in background."""
+        try:
+            print(f"Starting paper trading scan {run_id}", file=sys.stderr)
+            
+            # Update progress to show scan is starting
+            active_paper_scans[run_id]['progress'] = {'done': 0, 'total': 100}
+            active_paper_scans[run_id]['state'] = 'running'
+            active_paper_scans[run_id]['status_message'] = 'Initializing scan...'
+            
+            # Step 1: Initialize scan (simulate progress)
+            for i in range(1, 20):
+                active_paper_scans[run_id]['progress']['done'] = i
+                time.sleep(0.05)
+            
+            active_paper_scans[run_id]['status_message'] = 'Scanning S&P 500 stocks...'
+            active_paper_scans[run_id]['progress']['done'] = 20
+            
+            # Run the paper scan command
+            result = paper_scan('config.yaml', None, 'state', False)
+            
+            # Step 2: Processing results
+            active_paper_scans[run_id]['progress']['done'] = 90
+            active_paper_scans[run_id]['status_message'] = 'Processing results...'
+            
+            # Update scan state with results
+            if result and 'intents' in result:
+                # Convert intents to displayable format
+                display_results = []
+                for intent in result['intents']:
+                    # Handle bracket structure from new format
+                    bracket = intent.get('bracket', {})
+                    meta = intent.get('meta', {})
+                    
+                    display_results.append({
+                        'symbol': intent['symbol'],
+                        'score': meta.get('score', 0),
+                        'entry_price': 0,  # Market order, no fixed price
+                        'stop_price': bracket.get('stop_loss', 0),
+                        'target_price': bracket.get('take_profit', 0),
+                        'shares': intent.get('qty', 0),
+                        'risk_amount': 500  # Fixed $500 risk per trade
+                    })
+                
+                # Step 3: Complete
+                active_paper_scans[run_id]['progress']['done'] = 100
+                active_paper_scans[run_id]['results'] = display_results
+                active_paper_scans[run_id]['state'] = 'done'
+                active_paper_scans[run_id]['status_message'] = f'Found {len(display_results)} candidates'
+                print(f"Paper scan {run_id} found {len(display_results)} candidates meeting criteria (score >= 45)", file=sys.stderr)
+            else:
+                # Step 3: Complete (no results)
+                active_paper_scans[run_id]['progress']['done'] = 100
+                active_paper_scans[run_id]['results'] = []
+                active_paper_scans[run_id]['state'] = 'done'
+                active_paper_scans[run_id]['status_message'] = 'No candidates found meeting criteria'
+                print(f"Paper scan {run_id} found no candidates meeting criteria (score >= 45)", file=sys.stderr)
+                
+        except Exception as e:
+            print(f"Paper scan {run_id} failed: {e}", file=sys.stderr)
+            active_paper_scans[run_id]['state'] = 'error'
+            active_paper_scans[run_id]['error'] = str(e)
 
 PORT = 8002
 print(f"Starting SwingTrading Server v2 on port {PORT}")

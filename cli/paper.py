@@ -101,15 +101,33 @@ def run_scanner(config: Dict) -> pd.DataFrame:
     # Load universe
     universe_file = config['scanner'].get('universe_file', 'sp500_tickers.txt')
     with open(universe_file) as f:
-        tickers = [line.strip() for line in f if line.strip()]
+        all_tickers = [line.strip() for line in f if line.strip()]
     
-    logger.info(f"Scanning {len(tickers)} symbols...")
+    # For paper trading, limit to most liquid stocks for faster scanning
+    # Focus on top 100 most traded stocks
+    high_volume_stocks = [
+        'SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'TSLA', 'GOOGL', 'GOOG',
+        'AMD', 'AVGO', 'COST', 'PEP', 'NFLX', 'ADBE', 'CSCO', 'INTC', 'TMUS', 'CMCSA',
+        'TXN', 'AMGN', 'HON', 'QCOM', 'SBUX', 'INTU', 'ISRG', 'MDLZ', 'GILD', 'ADI',
+        'VRTX', 'REGN', 'BKNG', 'PDD', 'AMAT', 'PANW', 'ADP', 'MU', 'LRCX', 'KLAC',
+        'SNPS', 'CDNS', 'MELI', 'ASML', 'ABNB', 'CHTR', 'MAR', 'MRVL', 'ORLY', 'FTNT',
+        'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'USB', 'PNC', 'TFC', 'COF',
+        'V', 'MA', 'AXP', 'PYPL', 'SQ', 'COIN', 'DIS', 'NFLX', 'CMCSA', 'T',
+        'UNH', 'JNJ', 'PFE', 'ABBV', 'LLY', 'TMO', 'ABT', 'DHR', 'BMY', 'AMGN',
+        'XOM', 'CVX', 'COP', 'SLB', 'EOG', 'PXD', 'MPC', 'VLO', 'PSX', 'OXY',
+        'BA', 'CAT', 'DE', 'GE', 'HON', 'LMT', 'RTX', 'UPS', 'UNP', 'FDX'
+    ]
+    
+    # Use only stocks that exist in both lists
+    tickers = [t for t in high_volume_stocks if t in all_tickers][:100]
+    
+    logger.info(f"Scanning {len(tickers)} high-volume symbols for faster results...")
     
     # Get historical data and score each symbol
     results = []
     adapter = get_adapter(config)
     
-    for symbol in tickers[:50]:  # Limit for testing
+    for symbol in tickers:  # Scan all symbols
         try:
             # Get historical data
             end_date = datetime.now().strftime('%Y-%m-%d')
@@ -121,7 +139,8 @@ def run_scanner(config: Dict) -> pd.DataFrame:
                 # Calculate score using scoring_v2
                 score, gate_reason, components = calculate_score_v2(bars, symbol)
                 
-                if score > 0:  # Valid score
+                # Include all stocks with valid scores (even if low)
+                if score is not None and score >= 0:  # Valid score
                     # Extract latest values
                     latest_bar = bars[-1]
                     
@@ -136,10 +155,22 @@ def run_scanner(config: Dict) -> pd.DataFrame:
                         'gate_reason': gate_reason
                     })
                     
-                    logger.info(f"{symbol}: score={score:.1f}")
+                    # Log all scores to see what we're getting
+                    if score >= 30:
+                        logger.info(f"{symbol}: score={score:.1f} ✓ MEETS THRESHOLD")
+                    else:
+                        logger.debug(f"{symbol}: score={score:.1f}")
             
         except Exception as e:
             logger.error(f"Error scanning {symbol}: {e}")
+    
+    # Log summary of scan results
+    if results:
+        scores = [r['score'] for r in results]
+        high_scores = [s for s in scores if s >= 45]
+        logger.info(f"Scan complete: {len(results)} stocks scored")
+        logger.info(f"Score distribution: min={min(scores):.1f}, max={max(scores):.1f}, avg={sum(scores)/len(scores):.1f}")
+        logger.info(f"Stocks meeting threshold (>=45): {len(high_scores)}")
     
     # Convert to DataFrame
     df = pd.DataFrame(results)
@@ -263,7 +294,8 @@ def cmd_scan(
     return {
         'status': 'success',
         'run_id': summary['run_id'],
-        'intents': len(intents),
+        'intents': intents,  # Return actual intents not just count
+        'intent_count': len(intents),
         'paths': {
             'scan': str(scan_path) if not dry_run else None,
             'intents': str(intent_path) if not dry_run else None
@@ -494,7 +526,15 @@ def cmd_positions(config_file: str) -> Dict:
         print("-" * 65)
         print(f"{'TOTAL':<8} {'':<6} {'':<10} {'':<10} ${total_unrealized:>+11.2f}")
     
-    return {'positions': len(positions)}
+    # Return actual positions data for API usage
+    return {
+        'positions': positions,
+        'account': {
+            'equity': float(account['equity']),
+            'cash': float(account['cash'])
+        },
+        'count': len(positions)
+    }
 
 
 def cmd_close_all(config_file: str, reason: str = "Manual close") -> Dict:

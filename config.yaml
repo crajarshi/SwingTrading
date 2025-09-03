@@ -24,7 +24,7 @@ paper_trading:
   # Entry criteria
   entry:
     max_symbols: 10             # Max new positions per day
-    min_score: 65               # Minimum score threshold
+    min_score: 30               # Minimum score threshold (lowered for more candidates)
     sort_by: "score"            # Secondary: "rsi_room", "pullback"
     
   # Position sizing
