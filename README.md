@@ -44,6 +44,49 @@ pipx install .
 
 ## Quick Start
 
+### Run the Local UI (v2)
+
+The simplest way to explore scanning and paper trading is via the built‑in local server and single‑page UI.
+
+Prerequisites:
+- Python 3.10+
+- A virtual environment in `venv/` (repo already has one)
+- Alpaca paper trading API keys set in `.env`
+
+Setup and run:
+
+```bash
+# Activate or use the bundled venv directly
+python3 -m venv venv  # if you don’t already have one
+
+# Install runtime deps used by scoring v2
+venv/bin/python -m pip install --upgrade pip
+venv/bin/python -m pip install numpy scipy
+
+# Ensure .env contains ALPACA_API_KEY and ALPACA_API_SECRET
+cp .env.example .env  # if needed, then edit
+
+# Start the v2 server (serves web/working.html on port 8002)
+venv/bin/python working_server_v2.py
+
+# Open the UI
+# http://localhost:8002/working.html
+```
+
+In the UI:
+- Click “Run Scan” (top) to use the full scanner, or “Scan for Candidates” (yellow) for the paper‑trading candidates.
+- In Paper Trading results, select rows, edit Shares/Side/Entry/Stop/Target or risk/share, then “Place Selected Orders” to submit day bracket orders.
+
+Alternative (Makefile helpers):
+
+```bash
+make deps        # Install NumPy/SciPy into venv
+make ui-start    # Start server in background (nohup), writes .server.pid
+make ui-status   # Show if server is running
+make ui-logs     # Tail server.log
+make ui-stop     # Stop the background server
+```
+
 ### 1. Set Up Credentials
 
 ```bash
@@ -69,7 +112,7 @@ swing-scan --ticker AAPL
 swing-scan --debug
 ```
 
-### 3. Paper Trading (NEW!)
+### 3. Paper Trading (CLI)
 
 Fully automated paper trading system with daily scanning, order placement, and P&L reporting.
 
@@ -85,6 +128,16 @@ python cli/paper.py positions # Check positions anytime
 ```
 
 See [PAPER_TRADING_README.md](PAPER_TRADING_README.md) for complete documentation.
+
+## Scoring v2 (P0 improvements)
+
+The v2 scorer uses symbol‑relative percentiles and hard gates. Recent P0 improvements:
+- Dollar volume filter (≥ $20M) and dollar‑volume uplift percentile (replaces raw volume)
+- RSI percentile (symbol‑relative) instead of absolute “RSI room”
+- Trend quality: combines price vs SMA50 with SMA50 slope and regression R²
+- 3‑day EMA smoothing of component percentiles
+
+Composite remains an equal‑weighted average of four components: Pullback, Trend, RSI percentile, Dollar‑volume uplift.
 
 ## Configuration
 

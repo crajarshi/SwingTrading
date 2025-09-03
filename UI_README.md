@@ -2,7 +2,7 @@
 
 ## Overview
 
-A lightweight, single-page web interface for the SwingTrading Scanner that provides real-time scanning with an intuitive parameter control system.
+A lightweight, single-page web interface for the SwingTrading Scanner that provides real-time scanning and interactive paper trading with an intuitive control system.
 
 ## Features
 
@@ -35,27 +35,17 @@ pip install -r api/requirements.txt
 pip install -e .
 ```
 
-### Running the UI
+### Running the UI (v2 local server)
 
 ```bash
-python run_ui.py
+# Install dependencies into the repo venv (once)
+venv/bin/python -m pip install --upgrade pip
+venv/bin/python -m pip install numpy scipy
+
+# Start the v2 server and open the page
+venv/bin/python working_server_v2.py
+# UI: http://localhost:8002/working.html
 ```
-
-This will:
-1. Check and install missing dependencies
-2. Find an available port (starting at 8000)
-3. Start the FastAPI backend server
-4. Open your browser to the UI
-
-### Alternative: Manual Start
-
-Start the API server:
-```bash
-cd api
-uvicorn server:app --reload --host 127.0.0.1 --port 8000
-```
-
-Then open your browser to: http://localhost:8000
 
 ## Usage Guide
 
@@ -258,3 +248,19 @@ For issues or questions:
 - Review this documentation
 - Check main README.md for scanner configuration
 - Report issues at: https://github.com/crajarshi/SwingTrading/issues
+### Paper Trading (Interactive)
+
+- Click “Scan for Candidates” to build the candidate list
+- For each row, edit Side, Entry (blank = market), Stop, Target, Shares, and Risk/Share
+- Select desired rows and click “Place Selected Orders” to submit day bracket orders
+
+Server endpoints used:
+- `POST /api/paper/scan` → Create scan run for candidates
+- `GET  /api/paper/scan/{run_id}/status` → Poll status
+- `GET  /api/paper/positions` → Current positions
+- `POST /api/paper/report` → Generate EOD report
+- `POST /api/paper/place-custom` → Place selected custom bracket orders
+
+Scoring v2 (P0) in UI details:
+- Components shown: Pullback, Trend, RSI Percentile, Dollar‑Volume Uplift
+- Values are symbol‑relative percentiles with 3‑day EMA smoothing

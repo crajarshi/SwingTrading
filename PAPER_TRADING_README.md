@@ -19,6 +19,26 @@ python cli/paper.py place     # Before market open
 python cli/paper.py report    # End of day
 ```
 
+### Web UI (Interactive)
+
+You can also use the local UI for interactive order placement with full bracket configuration.
+
+```bash
+venv/bin/python -m pip install --upgrade pip
+venv/bin/python -m pip install numpy scipy
+venv/bin/python working_server_v2.py
+# Open http://localhost:8002/working.html
+```
+
+UI Paper Trading flow:
+- Click “Scan for Candidates” to build intents
+- Edit per‑row parameters: Side, Entry (blank = market), Stop, Target, Shares, and Risk/Share
+- Select one or more rows and click “Place Selected Orders”
+- Orders are placed as day bracket orders via Alpaca
+
+Endpoint used: `POST /api/paper/place-custom` with payload
+`[{symbol, side, qty, entry_price('market'|float), stop_loss, take_profit}]`
+
 ## Key Features Implemented
 
 ### ✅ P0 Requirements (Complete)
@@ -96,6 +116,11 @@ paper_trading:
     target_atr_mult: 3.0      # Target = entry + 3*ATR
     time_exit_days: 10        # Max holding period
 ```
+
+Notes on scoring v2 used for entry candidates:
+- Liquidity gate: min $20M dollar volume
+- Components: Pullback, Trend (incl. slope & R²), RSI percentile, Dollar‑volume uplift
+- Equal‑weighted composite (25% each), 3‑day EMA smoothed
 
 ## Daily Commands
 

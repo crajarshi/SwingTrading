@@ -293,11 +293,20 @@ def format_score_output(
         output["score"] = None  # Explicit null
     
     if "percentiles" in components:
-        # Format percentiles to 1 decimal place
-        output["pullback_pct"] = round(components["percentiles"].get("pullback_pct", 0), 1)
-        output["trend_pct"] = round(components["percentiles"].get("trend_pct", 0), 1)
-        output["rsi_room_pct"] = round(components["percentiles"].get("rsi_room_pct", 0), 1)
-        output["volume_uplift_pct"] = round(components["percentiles"].get("volume_uplift_pct", 0), 1)
+        # Format percentiles to 1 decimal place (new P0 keys)
+        pullback_pct = round(components["percentiles"].get("pullback_pct", 0), 1)
+        trend_pct = round(components["percentiles"].get("trend_pct", 0), 1)
+        rsi_pct = round(components["percentiles"].get("rsi_pct", 0), 1)
+        dollar_volume_uplift_pct = round(components["percentiles"].get("dollar_volume_uplift_pct", 0), 1)
+
+        output["pullback_pct"] = pullback_pct
+        output["trend_pct"] = trend_pct
+        output["rsi_pct"] = rsi_pct
+        output["dollar_volume_uplift_pct"] = dollar_volume_uplift_pct
+
+        # Backward-compatible aliases for existing UI/server code
+        output["rsi_room_pct"] = rsi_pct
+        output["volume_uplift_pct"] = dollar_volume_uplift_pct
     
     if "raw_features" in components:
         # Add raw values for transparency

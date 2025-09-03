@@ -753,12 +753,12 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
                 'model_version': MODEL_VERSION
             }
             
-            # Always add score components for display
+            # Always add score components for display (aligned with P0 keys)
             result_data['score_components'] = {
                 'pullback': round(output.get('pullback_pct', 0), 1) if 'pullback_pct' in output else None,
                 'trend': round(output.get('trend_pct', 0), 1) if 'trend_pct' in output else None,
-                'rsi_room': round(output.get('rsi_room_pct', 0), 1) if 'rsi_room_pct' in output else None,
-                'volume': round(output.get('volume_uplift_pct', 0), 1) if 'volume_uplift_pct' in output else None,
+                'rsi': round(output.get('rsi_pct', 0), 1) if 'rsi_pct' in output else None,
+                'dollar_volume': round(output.get('dollar_volume_uplift_pct', 0), 1) if 'dollar_volume_uplift_pct' in output else None,
                 'gates_passed': stock_data['gate_reason'] is None
             }
             
