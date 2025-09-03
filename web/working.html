@@ -287,8 +287,8 @@
                 <button onclick="runPaperScan()" style="background: #ffc107; color: #212529;">
                     Scan for Candidates
                 </button>
-                <button onclick="placePaperOrders()" style="background: #28a745;">
-                    Place Orders
+                <button onclick="placeSelectedOrders()" style="background: #28a745;">
+                    Place Selected Orders
                 </button>
                 <button onclick="viewPositions()" style="background: #17a2b8;">
                     View Positions
@@ -733,6 +733,7 @@
         
         // Paper Trading Functions
         let activePaperScanId = null;
+        let paperCandidates = [];
         
         async function runPaperScan() {
             console.log('Starting paper trading scan...');
@@ -843,17 +844,21 @@
             // Clear existing content
             header.innerHTML = '';
             tbody.innerHTML = '';
+            paperCandidates = results;
             
             // Create header row
             const headerRow = document.createElement('tr');
             headerRow.innerHTML = `
+                <th>Select</th>
                 <th>Symbol</th>
                 <th>Score</th>
+                <th>Side</th>
                 <th>Entry</th>
                 <th>Stop</th>
                 <th>Target</th>
                 <th>Shares</th>
-                <th>Risk</th>
+                <th>Risk/Share</th>
+                <th>Risk ($)</th>
             `;
             header.appendChild(headerRow);
             
@@ -863,21 +868,140 @@
                 // Handle market orders with no entry_price
                 const entryPrice = result.entry_price || 'Market';
                 const entryDisplay = entryPrice === 'Market' ? 'Market' : `$${entryPrice.toFixed(2)}`;
+                const lastClose = result.close ? parseFloat(result.close) : 0;
+                const defaultRiskPerShare = (result.stop_price && lastClose) ? Math.abs((lastClose - result.stop_price)) : '';
                 
+                row.setAttribute('data-symbol', result.symbol);
                 row.innerHTML = `
-                    <td><strong>${result.symbol}</strong></td>
+                    <td><input type="checkbox" class="order-select"></td>
+                    <td><strong>${result.symbol}</strong><br><small style="color:#666;">close: ${lastClose ? '$'+ lastClose.toFixed(2) : 'n/a'}</small></td>
                     <td>${result.score.toFixed(1)}</td>
-                    <td>${entryDisplay}</td>
-                    <td>$${result.stop_price.toFixed(2)}</td>
-                    <td>$${result.target_price.toFixed(2)}</td>
-                    <td>${result.shares}</td>
-                    <td>$${result.risk_amount.toFixed(2)}</td>
+                    <td>
+                        <select class="order-side">
+                            <option value="buy" selected>Buy</option>
+                            <option value="sell">Sell</option>
+                        </select>
+                    </td>
+                    <td>
+                        <input type="number" class="order-entry" step="0.01" value="${lastClose ? lastClose.toFixed(2) : ''}" style="width:110px;">
+                    </td>
+                    <td>
+                        <input type="number" class="order-stop" step="0.01" value="${result.stop_price ? result.stop_price.toFixed(2) : ''}" style="width:110px;">
+                    </td>
+                    <td>
+                        <input type="number" class="order-target" step="0.01" value="${result.target_price ? result.target_price.toFixed(2) : ''}" style="width:110px;">
+                    </td>
+                    <td>
+                        <input type="number" class="order-shares" step="1" min="1" value="${result.shares || ''}" style="width:90px;">
+                    </td>
+                    <td>
+                        <input type="number" class="order-riskps" step="0.01" value="${defaultRiskPerShare !== '' ? defaultRiskPerShare.toFixed(2) : ''}" style="width:110px;">
+                    </td>
+                    <td id="risk-${result.symbol}">$${(result.risk_amount || 0).toFixed(2)}</td>
                 `;
+                // Wire up live risk calculation
+                const sharesEl = row.querySelector('.order-shares');
+                const riskpsEl = row.querySelector('.order-riskps');
+                const riskCell = () => document.getElementById(`risk-${result.symbol}`);
+                const updateRisk = () => {
+                    const s = parseFloat(sharesEl.value || '0');
+                    const rps = parseFloat(riskpsEl.value || '0');
+                    if (!isNaN(s) && !isNaN(rps)) {
+                        riskCell().textContent = `$${(s * rps).toFixed(2)}`;
+                    }
+                };
+                sharesEl.addEventListener('input', updateRisk);
+                riskpsEl.addEventListener('input', updateRisk);
                 tbody.appendChild(row);
             });
             
             // Show the table
             table.style.display = 'table';
+        }
+
+        async function placeSelectedOrders() {
+            const status = document.getElementById('paper-status');
+            status.style.display = 'block';
+            status.innerHTML = '<strong>Placing selected orders...</strong>';
+            
+            // Collect selected rows
+            const tbody = document.getElementById('paper-results');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const orders = [];
+            for (const row of rows) {
+                const selected = row.querySelector('.order-select')?.checked;
+                if (!selected) continue;
+                const symbol = row.getAttribute('data-symbol');
+                const side = row.querySelector('.order-side')?.value || 'buy';
+                const qty = parseInt(row.querySelector('.order-shares')?.value || '0');
+                const entryStr = row.querySelector('.order-entry')?.value || '';
+                const entry_price = entryStr === '' ? 'market' : parseFloat(entryStr);
+                const stopValue = row.querySelector('.order-stop')?.value || '';
+                const targetValue = row.querySelector('.order-target')?.value || '';
+                let stop_loss = stopValue ? parseFloat(stopValue) : 0;
+                let take_profit = targetValue ? parseFloat(targetValue) : 0;
+                const riskps = parseFloat(row.querySelector('.order-riskps')?.value || '0');
+                
+                // If risk/share and numeric entry provided, recompute stop accordingly
+                if (!isNaN(riskps) && riskps > 0 && typeof entry_price === 'number') {
+                    if (side === 'buy') {
+                        stop_loss = entry_price - riskps;
+                    } else {
+                        stop_loss = entry_price + riskps; // short risk above entry
+                    }
+                }
+                
+                // Validate each field and collect specific errors
+                const errors = [];
+                if (!symbol) errors.push('missing symbol');
+                if (!qty || qty <= 0) errors.push('invalid shares');
+                if (!stopValue || isNaN(stop_loss) || stop_loss <= 0) errors.push('invalid stop loss');
+                if (!targetValue || isNaN(take_profit) || take_profit <= 0) errors.push('invalid target');
+                
+                if (errors.length > 0) {
+                    console.warn(`Skipping ${symbol || 'unknown'}: ${errors.join(', ')}`);
+                    continue;
+                }
+                
+                orders.push({ symbol, side, qty, entry_price, stop_loss, take_profit });
+            }
+            
+            if (orders.length === 0) {
+                status.innerHTML = '<span style="color: #856404;">No rows selected</span>';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/paper/place-custom', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orders })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    status.innerHTML = `<span style=\"color: #dc3545;\">Error: ${data.error}</span>`;
+                    return;
+                }
+                const placed = data.placed || [];
+                const errs = data.errors || [];
+                let html = `<strong style=\"color: #155724;\">Placed ${placed.length} order(s)</strong>`;
+                if (placed.length) {
+                    html += '<div style="margin-top: 10px; font-size: 14px;">';
+                    placed.forEach(p => {
+                        const priceStr = p.entry_type === 'market' ? 'market' : `$${(p.limit_price || 0).toFixed(2)}`;
+                        html += `<div>• ${p.symbol} (${p.side}): ${p.qty} @ ${priceStr} [SL $${p.stop_loss.toFixed(2)} / TP $${p.take_profit.toFixed(2)}]</div>`;
+                    });
+                    html += '</div>';
+                }
+                if (errs.length) {
+                    html += '<div style="margin-top: 10px; color: #dc3545;">Errors:</div>';
+                    errs.forEach(e => { html += `<div style=\"color:#dc3545;\">• ${e.symbol || ''}: ${e.error}</div>`; });
+                }
+                status.innerHTML = html;
+            } catch (err) {
+                console.error('placeSelectedOrders failed', err);
+                status.innerHTML = `<span style=\"color: #dc3545;\">Failed to place orders: ${err.message}</span>`;
+            }
         }
         
         async function placePaperOrders() {

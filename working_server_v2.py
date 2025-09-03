@@ -25,7 +25,9 @@ from cli.paper import (
     cmd_scan as paper_scan,
     cmd_place as paper_place,
     cmd_positions as paper_positions,
-    cmd_report as paper_report
+    cmd_report as paper_report,
+    load_config as paper_load_config,
+    get_adapter as paper_get_adapter,
 )
 
 # Load Alpaca credentials from .env
@@ -319,13 +321,14 @@ THE 4 COMPONENTS:
    • Good: 5-15% above MA
    • Bad: Below MA or too extended
 
-3. RSI ROOM (25% weight)
-   • Measures: 70 - Current RSI
-   • Good: RSI 30-50 (lots of room)
-   • Bad: RSI >65 (limited upside)
+3. RSI PERCENTILE (25% weight)
+   • Measures: Symbol-relative RSI percentile
+   • Good: RSI in 30-70 percentile range
+   • Bad: Extreme percentiles (overbought/oversold)
 
-4. VOLUME (25% weight)
-   • Measures: Today vs 10-day average
+4. DOLLAR VOLUME (25% weight)
+   • Measures: Today's dollar volume vs 10-day average
+   • Filters: Minimum $20M daily liquidity
    • Good: 1.5-3x average
    • Bad: Below average (no interest)
 
@@ -489,6 +492,91 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
                 print(f"Error generating EOD report: {e}", file=sys.stderr)
                 self.send_json({'error': str(e)})
                 
+        elif self.path == '/api/paper/place-custom':
+            # Place custom paper orders sent from the UI
+            content_length = int(self.headers.get('Content-Length', 0) or 0)
+            post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
+            
+            try:
+                request_data = json.loads(post_data)
+            except Exception:
+                self.send_json({'error': 'Invalid JSON body'})
+                return
+            
+            orders = request_data.get('orders', [])
+            if not isinstance(orders, list) or not orders:
+                self.send_json({'error': 'No orders provided'})
+                return
+            
+            try:
+                # Reuse CLI helpers to get configured adapter
+                config = paper_load_config('config.yaml')
+                adapter = paper_get_adapter(config)
+            except Exception as e:
+                self.send_json({'error': f'Broker setup failed: {e}'})
+                return
+            
+            placed = []
+            errors = []
+            for o in orders:
+                try:
+                    symbol = o.get('symbol')
+                    side = (o.get('side') or 'buy').lower()
+                    qty = int(o.get('qty') or 0)
+                    entry_price = o.get('entry_price', None)
+                    stop_loss = o.get('stop_loss', None)
+                    take_profit = o.get('take_profit', None)
+                    
+                    if not symbol or qty <= 0 or stop_loss is None or take_profit is None:
+                        raise ValueError('Missing required fields (symbol, qty, stop_loss, take_profit)')
+                    
+                    # Determine entry type and limit
+                    entry_type = 'market'
+                    limit_price = None
+                    if isinstance(entry_price, (int, float)) and entry_price > 0:
+                        entry_type = 'limit'
+                        limit_price = float(entry_price)
+                    elif isinstance(entry_price, str) and entry_price.lower() != 'market':
+                        # If a string other than 'market' provided, try to parse
+                        try:
+                            val = float(entry_price)
+                            if val > 0:
+                                entry_type = 'limit'
+                                limit_price = val
+                        except Exception:
+                            pass
+                    
+                    client_order_id = f"manual:{datetime.now().strftime('%Y%m%d%H%M%S')}:{symbol}:{uuid.uuid4().hex[:6]}"
+                    
+                    # Submit as day bracket order
+                    resp = adapter.submit_bracket_order(
+                        symbol=symbol,
+                        qty=qty,
+                        side=side,
+                        entry_type=entry_type,
+                        time_in_force='day',
+                        limit_price=limit_price,
+                        stop_loss=float(stop_loss),
+                        take_profit=float(take_profit),
+                        client_order_id=client_order_id,
+                        open_only=False
+                    )
+                    placed.append({
+                        'symbol': symbol,
+                        'qty': qty,
+                        'side': side,
+                        'entry_type': entry_type,
+                        'limit_price': limit_price,
+                        'stop_loss': float(stop_loss),
+                        'take_profit': float(take_profit),
+                        'order_id': resp.get('id'),
+                        'client_order_id': client_order_id
+                    })
+                except Exception as e:
+                    errors.append({'symbol': o.get('symbol'), 'error': str(e)})
+            
+            self.send_json({'placed': placed, 'errors': errors})
+                
         else:
             self.send_error(404)
     
@@ -617,17 +705,31 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
             output = stock_data['output']
             score = stock_data['score']
             
-            # Calculate entry and targets based on action
+            # Calculate entry and targets based on action using ATR
             if 'close' in output:
                 close = output['close']
                 action = stock_data['action']
+                atr = output.get('atr_value', 0)
                 
-                if action == 'BUY':
+                # Use ATR-based targets if available, fallback to percentage
+                if action == 'BUY' and atr > 0:
+                    entry = close * 1.002  # Slight above market
+                    stop = close - (1.5 * atr)  # 1.5x ATR stop
+                    target1 = close + (2.0 * atr)  # 2x ATR target
+                    target2 = close + (3.0 * atr)  # 3x ATR target
+                elif action == 'BUY':
+                    # Fallback to percentage-based
                     entry = close * 1.002
                     stop = close * 0.97
                     target1 = close * 1.05
                     target2 = close * 1.08
+                elif action == 'WATCH' and atr > 0:
+                    entry = close * 0.99
+                    stop = entry - (1.5 * atr)
+                    target1 = entry + (2.0 * atr)
+                    target2 = entry + (3.0 * atr)
                 elif action == 'WATCH':
+                    # Fallback to percentage-based
                     entry = close * 0.99
                     stop = entry * 0.97
                     target1 = entry * 1.03
@@ -716,6 +818,7 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
                     display_results.append({
                         'symbol': intent['symbol'],
                         'score': meta.get('score', 0),
+                        'close': meta.get('close', 0),
                         'entry_price': 0,  # Market order, no fixed price
                         'stop_price': bracket.get('stop_loss', 0),
                         'target_price': bracket.get('take_profit', 0),

@@ -1,7 +1,9 @@
 """Technical indicators with Wilder's smoothing and T-1 exclusion."""
 
 import math
-from typing import List, Dict, Optional
+import numpy as np
+from scipy import stats
+from typing import List, Dict, Optional, Tuple
 
 
 def wilder_rsi(prices: List[float], period: int = 14) -> float:
@@ -143,6 +145,56 @@ def sma(values: List[float], period: int) -> float:
     return sum(values[-period:]) / period
 
 
+def calculate_dollar_volume(price: float, volume: float) -> float:
+    """Calculate dollar volume (price * volume).
+    
+    Args:
+        price: Stock price
+        volume: Share volume
+    
+    Returns:
+        Dollar volume
+    """
+    return price * volume
+
+
+def calculate_trend_quality(sma_values: List[float], period: int = 20) -> Dict[str, float]:
+    """Calculate trend slope and R² over specified period.
+    
+    Args:
+        sma_values: List of SMA values
+        period: Period for regression (default 20)
+    
+    Returns:
+        Dict with 'slope' (normalized %) and 'r_squared' (0-1)
+    """
+    if len(sma_values) < period or period < 2:
+        return {'slope': 0.0, 'r_squared': 0.0}
+    
+    # Use last 'period' values
+    y = np.array(sma_values[-period:])
+    x = np.arange(len(y))
+    
+    # Handle edge cases
+    if np.std(y) == 0:  # No variation
+        return {'slope': 0.0, 'r_squared': 0.0}
+    
+    try:
+        # Linear regression
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+        
+        # Normalize slope as % change per day
+        avg_price = np.mean(y)
+        slope_pct = (slope / avg_price) * 100 if avg_price > 0 else 0
+        
+        return {
+            'slope': slope_pct,  # % per day
+            'r_squared': r_value ** 2  # 0-1, higher = more consistent
+        }
+    except:
+        return {'slope': 0.0, 'r_squared': 0.0}
+
+
 def calculate_indicators_t_minus_1(bars: List[Dict]) -> Dict[str, float]:
     """Calculate all indicators using data up to T-1.
     
@@ -177,6 +229,14 @@ def calculate_indicators_t_minus_1(bars: List[Dict]) -> Dict[str, float]:
     rsi_raw = wilder_rsi(closes, 14)
     atr_raw = wilder_atr(bars, 14)
     
+    # Calculate dollar volume metrics
+    dollar_volume_t = calculate_dollar_volume(closes[-1], volumes[-1])
+    
+    # 10-day average dollar volume (T-11 to T-1)
+    dollar_volumes_hist = [calculate_dollar_volume(bars[i]['c'], bars[i]['v']) 
+                           for i in range(max(0, len(bars)-11), len(bars)-1)]
+    dollar_volume_avg = sum(dollar_volumes_hist) / len(dollar_volumes_hist) if dollar_volumes_hist else dollar_volume_t
+    
     return {
         'sma50_t_minus_1': sma50_t_minus_1,
         'high20_t_minus_1': high20_t_minus_1,
@@ -184,5 +244,7 @@ def calculate_indicators_t_minus_1(bars: List[Dict]) -> Dict[str, float]:
         'rsi_raw': rsi_raw,
         'atr_raw': atr_raw,
         'close_t': closes[-1],
-        'volume_t': volumes[-1]
+        'volume_t': volumes[-1],
+        'dollar_volume_t': dollar_volume_t,
+        'dollar_volume_avg': dollar_volume_avg
     }

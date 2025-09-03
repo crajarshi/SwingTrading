@@ -40,7 +40,8 @@ def calculate_raw_features(bars: List[Dict]) -> Dict[str, Any]:
     volume_t = indicators['volume_t']
     sma50_t_minus_1 = indicators['sma50_t_minus_1']
     high20_t_minus_1 = indicators['high20_t_minus_1']
-    vol_avg_10_t_minus_1 = indicators['vol_avg_10_t_minus_1']
+    dollar_volume_t = indicators['dollar_volume_t']
+    dollar_volume_avg = indicators['dollar_volume_avg']
     rsi_raw = indicators['rsi_raw']
     atr_raw = indicators['atr_raw']
     
@@ -49,19 +50,33 @@ def calculate_raw_features(bars: List[Dict]) -> Dict[str, Any]:
     pullback_raw = (1 - close_t / high20_t_minus_1) * 100 if high20_t_minus_1 > 0 else 0
     pullback_raw = max(0, min(100, pullback_raw))  # Clamp [0, 100]
     
-    # Trend: ((Close(T) / SMA50(T-1)) - 1) × 100
-    trend_raw = ((close_t / sma50_t_minus_1) - 1) * 100 if sma50_t_minus_1 > 0 else 0
-    trend_raw = max(-50, min(100, trend_raw))  # Clamp [-50, 100]
+    # Trend with quality metrics
+    from .indicators import calculate_trend_quality, sma
     
-    # RSI room: 70 - RSI_smoothed(T-1)
-    rsi_room_raw = 70 - rsi_raw
+    # Get SMA50 history for trend quality (last 20 days)
+    sma50_history = []
+    for i in range(max(50, len(bars)-20), len(bars)):
+        sma50_history.append(sma([b['c'] for b in bars[:i]], 50))
     
-    # Volume uplift: ln(Volume(T) / VolAvg10(T-1))
-    # Natural log, shifted average
-    if vol_avg_10_t_minus_1 > 0 and volume_t > 0:
-        volume_uplift_raw = math.log(volume_t / vol_avg_10_t_minus_1)
+    trend_quality = calculate_trend_quality(sma50_history, period=20)
+    
+    # Combine position, slope, and R²
+    trend_position = ((close_t / sma50_t_minus_1) - 1) * 100 if sma50_t_minus_1 > 0 else 0
+    trend_composite = (
+        trend_position * 0.6 +  # 60% weight to position
+        trend_quality['slope'] * 20 * 0.3 +  # 30% to slope (scaled)
+        trend_quality['r_squared'] * 100 * 0.1  # 10% to R²
+    )
+    trend_raw = max(-50, min(100, trend_composite))  # Clamp [-50, 100]
+    
+    # RSI raw value (for percentile calculation, not room)
+    rsi_raw_value = rsi_raw
+    
+    # Dollar volume uplift: ln(DollarVolume(T) / DollarVolumeAvg(T-1))
+    if dollar_volume_avg > 0 and dollar_volume_t > 0:
+        dollar_volume_uplift_raw = math.log(dollar_volume_t / dollar_volume_avg)
     else:
-        volume_uplift_raw = 0
+        dollar_volume_uplift_raw = 0
     
     # ATR ratio for gates
     atr_ratio = atr_raw / close_t if close_t > 0 else 0
@@ -69,15 +84,17 @@ def calculate_raw_features(bars: List[Dict]) -> Dict[str, Any]:
     return {
         'pullback_raw': pullback_raw,
         'trend_raw': trend_raw,
-        'rsi_room_raw': rsi_room_raw,
-        'volume_uplift_raw': volume_uplift_raw,
+        'rsi_raw_value': rsi_raw_value,  # Changed from rsi_room_raw
+        'dollar_volume_uplift_raw': dollar_volume_uplift_raw,  # Changed from volume_uplift_raw
         'atr_ratio': atr_ratio,
         'close_t': close_t,
         'sma50_t_minus_1': sma50_t_minus_1,
         'rsi_value': rsi_raw,
         'atr_value': atr_raw,
-        'volume_t': volume_t,
-        'vol_avg_10_t_minus_1': vol_avg_10_t_minus_1
+        'dollar_volume_t': dollar_volume_t,
+        'dollar_volume_avg': dollar_volume_avg,
+        'trend_slope': trend_quality['slope'],
+        'trend_r2': trend_quality['r_squared']
     }
 
 
@@ -93,8 +110,8 @@ def build_historical_features(bars: List[Dict]) -> Dict[str, List[float]]:
     history = {
         'pullback_history': [],
         'trend_history': [],
-        'rsi_room_history': [],
-        'volume_uplift_history': []
+        'rsi_history': [],  # Changed from rsi_room_history
+        'dollar_volume_uplift_history': []  # Changed from volume_uplift_history
     }
     
     # Need at least 60 bars to start calculating features
@@ -105,14 +122,14 @@ def build_historical_features(bars: List[Dict]) -> Dict[str, List[float]]:
             features = calculate_raw_features(sub_bars)
             history['pullback_history'].append(features['pullback_raw'])
             history['trend_history'].append(features['trend_raw'])
-            history['rsi_room_history'].append(features['rsi_room_raw'])
-            history['volume_uplift_history'].append(features['volume_uplift_raw'])
+            history['rsi_history'].append(features['rsi_raw_value'])  # Store actual RSI
+            history['dollar_volume_uplift_history'].append(features['dollar_volume_uplift_raw'])
         except:
             # Use neutral values if calculation fails
             history['pullback_history'].append(10.0)
             history['trend_history'].append(0.0)
-            history['rsi_room_history'].append(30.0)
-            history['volume_uplift_history'].append(0.0)
+            history['rsi_history'].append(50.0)  # Neutral RSI
+            history['dollar_volume_uplift_history'].append(0.0)
     
     return history
 
@@ -152,6 +169,14 @@ def calculate_score_v2(
     # Step 2-3: Calculate raw features (includes indicators on T-1)
     features = calculate_raw_features(bars)
     
+    # Check dollar volume filter ($20M minimum)
+    if features.get('dollar_volume_t', 0) < 20_000_000:
+        telemetry.track_skip(symbol, "insufficient_liquidity")
+        return None, "insufficient_liquidity", {
+            "dollar_volume": features.get('dollar_volume_t', 0),
+            "required": 20_000_000
+        }
+    
     # Step 4: Build historical series and calculate percentiles
     # CRITICAL: Each percentile uses 252-day window excluding T
     history = build_historical_features(bars)
@@ -172,23 +197,24 @@ def calculate_score_v2(
     else:
         percentiles['trend_pct'] = 50.0
     
-    if len(history['rsi_room_history']) > 252:
-        window = history['rsi_room_history'][-253:-1]
-        percentiles['rsi_room_pct'] = calculate_percentile_rank(window, features['rsi_room_raw'])
+    if len(history['rsi_history']) > 252:
+        window = history['rsi_history'][-253:-1]
+        # RSI percentile: higher RSI = higher percentile (direct, not inverted)
+        percentiles['rsi_pct'] = calculate_percentile_rank(window, features['rsi_raw_value'])
     else:
-        percentiles['rsi_room_pct'] = 50.0
+        percentiles['rsi_pct'] = 50.0
     
-    if len(history['volume_uplift_history']) > 252:
-        window = history['volume_uplift_history'][-253:-1]
-        percentiles['volume_uplift_pct'] = calculate_percentile_rank(window, features['volume_uplift_raw'])
+    if len(history['dollar_volume_uplift_history']) > 252:
+        window = history['dollar_volume_uplift_history'][-253:-1]
+        percentiles['dollar_volume_uplift_pct'] = calculate_percentile_rank(window, features['dollar_volume_uplift_raw'])
     else:
-        percentiles['volume_uplift_pct'] = 50.0
+        percentiles['dollar_volume_uplift_pct'] = 50.0
     
     # Step 5: Apply EMA to percentile time series
     # Build percentile series for EMA calculation
     smoothed_percentiles = {}
     
-    for component in ['pullback', 'trend', 'rsi_room', 'volume_uplift']:
+    for component in ['pullback', 'trend', 'rsi', 'dollar_volume_uplift']:
         # Build time series of percentiles (need at least 3 days)
         pct_series = build_percentile_series(
             history[f'{component}_history'],
@@ -223,8 +249,8 @@ def calculate_score_v2(
     composite = (
         smoothed_percentiles['pullback_pct'] * 0.25 +
         smoothed_percentiles['trend_pct'] * 0.25 +
-        smoothed_percentiles['rsi_room_pct'] * 0.25 +
-        smoothed_percentiles['volume_uplift_pct'] * 0.25
+        smoothed_percentiles['rsi_pct'] * 0.25 +
+        smoothed_percentiles['dollar_volume_uplift_pct'] * 0.25
     )
     
     # Round to 2 decimal places
