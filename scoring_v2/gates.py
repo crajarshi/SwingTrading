@@ -2,12 +2,33 @@
 
 from typing import Tuple, Optional
 
-# Frozen gate thresholds (version-locked)
+# Gate thresholds v2.1 (optimized based on backtest results)
 GATES_V2 = {
     "atr_ratio": (0.005, 0.08),      # 0.5% to 8% of price (inclusive)
     "trend_filter": 1.0,              # close >= 1.0 × SMA50 (inclusive)
-    "pullback_band": (0.05, 0.20)     # 5% to 20% below high20 (inclusive)
+    "pullback_band": (0.05, 0.20),   # 5% to 20% below high20 (inclusive)
+    "score_range": (30.0, 75.0),     # Optimal score range based on backtest
+    "min_dollar_volume": 20_000_000  # Minimum daily dollar volume ($20M)
 }
+
+
+def validate_score_range(score: float) -> Tuple[bool, Optional[str]]:
+    """Validate that score is in optimal range based on backtest results.
+
+    Args:
+        score: Calculated composite score
+
+    Returns:
+        (pass, reason_if_failed)
+    """
+    min_score, max_score = GATES_V2["score_range"]
+
+    if score < min_score:
+        return False, "score_too_low"
+    elif score > max_score:
+        return False, "score_too_high"
+    else:
+        return True, None
 
 
 def evaluate_gates(
@@ -50,6 +71,23 @@ def evaluate_gates(
     
     # All gates passed
     return True, None
+
+
+def validate_dollar_volume(dollar_volume: float) -> Tuple[bool, Optional[str]]:
+    """Validate minimum dollar volume for liquidity.
+
+    Args:
+        dollar_volume: Current day's dollar volume
+
+    Returns:
+        (pass, reason_if_failed)
+    """
+    min_volume = GATES_V2["min_dollar_volume"]
+
+    if dollar_volume < min_volume:
+        return False, "insufficient_dollar_volume"
+    else:
+        return True, None
 
 
 def get_gate_config() -> dict:

@@ -47,3 +47,9 @@ state/
 reports/
 paper_trading.log
 *.log
+
+# Backtesting cache and results
+backtest_cache/
+*_backtest_results/
+example_backtest_results/
+sp500_backtest_results/
