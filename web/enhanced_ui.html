@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Swing Trading - Trust & Transparency</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+        }
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #45a049;
+        }
+        .btn-secondary {
+            background: #2196F3;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #1976D2;
+        }
+        .candidates-section {
+            margin-top: 30px;
+        }
+        .candidate-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+        .candidate-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .candidate-header {
+            background: #f8f9fa;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .candidate-details {
+            padding: 20px;
+            display: none;
+            background: white;
+        }
+        .candidate-details.expanded {
+            display: block;
+        }
+        .score-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+        }
+        .score-high { background: #4CAF50; }
+        .score-medium { background: #FF9800; }
+        .score-low { background: #f44336; }
+        .confidence-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .confidence-high { background: #e8f5e8; color: #2e7d32; }
+        .confidence-medium { background: #fff3e0; color: #f57c00; }
+        .confidence-low { background: #ffebee; color: #c62828; }
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .analysis-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .analysis-section h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .insight-list {
+            list-style: none;
+            padding: 0;
+        }
+        .insight-list li {
+            padding: 8px;
+            margin-bottom: 5px;
+            background: white;
+            border-radius: 4px;
+            border-left: 4px solid #2196F3;
+        }
+        .risk-indicator {
+            padding: 8px 16px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .risk-low { background: #e8f5e8; color: #2e7d32; }
+        .risk-medium { background: #fff3e0; color: #f57c00; }
+        .risk-high { background: #ffebee; color: #c62828; }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .expand-icon {
+            transition: transform 0.3s;
+        }
+        .expand-icon.rotated {
+            transform: rotate(180deg);
+        }
+
+        /* Help Modal Styles */
+        .help-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .help-content {
+            background: white;
+            border-radius: 10px;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .help-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px 10px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .help-header h2 {
+            margin: 0;
+        }
+        .help-body {
+            padding: 20px;
+        }
+        .help-section {
+            margin-bottom: 30px;
+        }
+        .help-section h3 {
+            color: #333;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .score-guide, .confidence-guide {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .score-range, .conf-item, .trade-item, .step, .warning {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #2196F3;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .step {
+            border-left-color: #28a745;
+        }
+        .warning {
+            border-left-color: #ffc107;
+            background: #fff8e1;
+        }
+        .warnings {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>🎯 Enhanced Swing Trading System</h1>
+                    <p>Trust Through Transparency - Detailed Analysis & Validation</p>
+                </div>
+                <button class="help-btn" onclick="toggleHelp()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 14px;">
+                    ❓ Help & Guide
+                </button>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-primary" onclick="runScan()">🔍 Scan for Opportunities</button>
+            <button class="btn btn-secondary" onclick="refreshAnalysis()">🔄 Refresh Analysis</button>
+            <div id="status" style="margin-left: auto; font-weight: bold;"></div>
+        </div>
+
+        <div id="candidates-section" class="candidates-section">
+            <div id="loading" class="loading" style="display: none;">
+                <h3>🔍 Scanning Market...</h3>
+                <p>Analyzing stocks with enhanced scoring system v2.1</p>
+            </div>
+            
+            <div id="candidates-container">
+                <!-- Candidates will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="help-modal" style="display: none;">
+        <div class="help-content">
+            <div class="help-header">
+                <h2>📚 SwingTrading System Guide</h2>
+                <button onclick="toggleHelp()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">×</button>
+            </div>
+            <div class="help-body">
+                <div class="help-section">
+                    <h3>🎯 How to Use the System</h3>
+                    <ol>
+                        <li><strong>Click "Scan for Opportunities"</strong> - System scans 500+ stocks and finds the best setups</li>
+                        <li><strong>Review Candidates</strong> - Each candidate shows score and confidence level</li>
+                        <li><strong>Expand Details</strong> - Click any candidate to see full analysis</li>
+                        <li><strong>Use Trading Setup</strong> - Follow the entry, stop, and target prices provided</li>
+                    </ol>
+                </div>
+
+                <div class="help-section">
+                    <h3>📊 Understanding the Score</h3>
+                    <div class="score-guide">
+                        <div class="score-range"><span class="badge score-high">60-100</span> <strong>Exceptional Setup</strong> - High probability trades, use full position size</div>
+                        <div class="score-range"><span class="badge score-medium">40-60</span> <strong>Strong Setup</strong> - Good risk/reward, standard position size</div>
+                        <div class="score-range"><span class="badge score-low">30-40</span> <strong>Moderate Setup</strong> - Smaller position, wait for better entry</div>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3>🔍 Confidence Levels</h3>
+                    <div class="confidence-guide">
+                        <div class="conf-item"><span class="badge confidence-high">High</span> Multiple signals aligned, strong conviction</div>
+                        <div class="conf-item"><span class="badge confidence-medium">Medium</span> Good setup but some mixed signals</div>
+                        <div class="conf-item"><span class="badge confidence-low">Low</span> Weak signals, proceed with caution</div>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3>💰 Trading Setup Explained</h3>
+                    <div class="trading-guide">
+                        <div class="trade-item"><strong>Entry Price:</strong> Current market price to enter the trade</div>
+                        <div class="trade-item"><strong>Stop Loss:</strong> <span style="color: #dc3545;">Exit price if trade goes against you (2x ATR below entry)</span></div>
+                        <div class="trade-item"><strong>Target 1:</strong> <span style="color: #28a745;">First profit target (1.5:1 reward/risk ratio)</span></div>
+                        <div class="trade-item"><strong>Target 2:</strong> <span style="color: #28a745;">Second profit target (2:1 reward/risk ratio)</span></div>
+                        <div class="trade-item"><strong>Position Size:</strong> Number of shares calculated for 0.5% portfolio risk</div>
+                        <div class="trade-item"><strong>Total Risk:</strong> Maximum dollar amount you could lose on this trade</div>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3>⚠️ Risk Management</h3>
+                    <ul>
+                        <li><strong>Never risk more than 0.5-1%</strong> of your portfolio on a single trade</li>
+                        <li><strong>Always use stop losses</strong> - The system calculates them automatically</li>
+                        <li><strong>High volatility stocks</strong> get smaller position sizes automatically</li>
+                        <li><strong>Scale out at targets</strong> - Take 50% profit at Target 1, let rest run to Target 2</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>📈 How to Place Trades</h3>
+                    <div class="steps">
+                        <div class="step">
+                            <strong>Step 1:</strong> Open your broker (Alpaca, TD Ameritrade, etc.)
+                        </div>
+                        <div class="step">
+                            <strong>Step 2:</strong> Enter the symbol (e.g., AAL)
+                        </div>
+                        <div class="step">
+                            <strong>Step 3:</strong> Set up a bracket order:
+                            <ul>
+                                <li>Buy [Position Size] shares at Market or Entry Price</li>
+                                <li>Set Stop Loss at the calculated price</li>
+                                <li>Set Profit Target at Target 1 price</li>
+                            </ul>
+                        </div>
+                        <div class="step">
+                            <strong>Step 4:</strong> Monitor the trade and adjust targets as needed
+                        </div>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3>🚨 Important Notes</h3>
+                    <div class="warnings">
+                        <div class="warning">⚠️ <strong>Paper Trade First:</strong> Test the system with virtual money before using real capital</div>
+                        <div class="warning">⚠️ <strong>Market Hours:</strong> Best results when trading during regular market hours (9:30 AM - 4:00 PM ET)</div>
+                        <div class="warning">⚠️ <strong>News Events:</strong> Avoid trading around major earnings or news announcements</div>
+                        <div class="warning">⚠️ <strong>Market Conditions:</strong> System works best in trending markets, be cautious in choppy conditions</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentCandidates = [];
+        
+        async function runScan() {
+            const loading = document.getElementById('loading');
+            const container = document.getElementById('candidates-container');
+            const status = document.getElementById('status');
+            
+            loading.style.display = 'block';
+            container.innerHTML = '';
+            status.textContent = 'Scanning...';
+            
+            try {
+                const response = await fetch('/api/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        universe: 'sp500',
+                        min_score: 30,
+                        max_candidates: 10
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.run_id) {
+                    pollScanResults(data.run_id);
+                } else {
+                    throw new Error('No run ID received');
+                }
+            } catch (error) {
+                loading.style.display = 'none';
+                status.textContent = 'Error';
+                container.innerHTML = `<div class="error">Scan failed: ${error.message}</div>`;
+            }
+        }
+        
+        async function pollScanResults(runId) {
+            try {
+                const response = await fetch(`/api/scan/${runId}`);
+                const data = await response.json();
+                
+                if (data.state === 'complete') {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('status').textContent = 'Complete';
+                    displayCandidates(data.candidates || []);
+                } else if (data.state === 'error') {
+                    throw new Error(data.error || 'Scan failed');
+                } else {
+                    // Still running, poll again
+                    setTimeout(() => pollScanResults(runId), 2000);
+                }
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('status').textContent = 'Error';
+                document.getElementById('candidates-container').innerHTML = 
+                    `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        function displayCandidates(candidates) {
+            currentCandidates = candidates;
+            const container = document.getElementById('candidates-container');
+            
+            if (!candidates || candidates.length === 0) {
+                container.innerHTML = '<div class="error">No candidates found with current criteria</div>';
+                return;
+            }
+            
+            container.innerHTML = candidates.map((candidate, index) => 
+                createCandidateCard(candidate, index)
+            ).join('');
+        }
+        
+        function createCandidateCard(candidate, index) {
+            const score = candidate.score || 0;
+            const scoreClass = score >= 40 ? 'score-high' : score >= 35 ? 'score-medium' : 'score-low';
+            const confidence = candidate.confidence || 'Unknown';
+            const confidenceClass = confidence.toLowerCase().includes('high') ? 'confidence-high' : 
+                                   confidence.toLowerCase().includes('medium') ? 'confidence-medium' : 'confidence-low';
+            
+            return `
+                <div class="candidate-card">
+                    <div class="candidate-header" onclick="toggleDetails(${index})">
+                        <div>
+                            <strong>${candidate.symbol}</strong>
+                            <span class="score-badge ${scoreClass}">Score: ${score.toFixed(1)}</span>
+                            <span class="confidence-badge ${confidenceClass}">${confidence}</span>
+                        </div>
+                        <div>
+                            <span class="expand-icon" id="icon-${index}">▼</span>
+                        </div>
+                    </div>
+                    <div class="candidate-details" id="details-${index}">
+                        <div id="analysis-${index}">
+                            <div class="loading">Loading detailed analysis...</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        async function toggleDetails(index) {
+            const details = document.getElementById(`details-${index}`);
+            const icon = document.getElementById(`icon-${index}`);
+            const analysisDiv = document.getElementById(`analysis-${index}`);
+            
+            if (details.classList.contains('expanded')) {
+                details.classList.remove('expanded');
+                icon.classList.remove('rotated');
+            } else {
+                details.classList.add('expanded');
+                icon.classList.add('rotated');
+                
+                // Load detailed analysis if not already loaded
+                if (analysisDiv.innerHTML.includes('Loading')) {
+                    await loadDetailedAnalysis(currentCandidates[index].symbol, analysisDiv);
+                }
+            }
+        }
+        
+        async function loadDetailedAnalysis(symbol, container) {
+            try {
+                const response = await fetch(`/api/analyze/${symbol}`);
+                const analysis = await response.json();
+                
+                if (analysis.error) {
+                    container.innerHTML = `<div class="error">${analysis.error}</div>`;
+                    return;
+                }
+                
+                container.innerHTML = createAnalysisDisplay(analysis);
+            } catch (error) {
+                container.innerHTML = `<div class="error">Failed to load analysis: ${error.message}</div>`;
+            }
+        }
+        
+        function createAnalysisDisplay(analysis) {
+            const breakdown = analysis.breakdown || {};
+            const risk = analysis.risk_assessment || {};
+            const insights = analysis.insights || {};
+            
+            return `
+                <div class="analysis-grid">
+                    <div class="analysis-section">
+                        <h4>📊 Score Breakdown</h4>
+                        ${createScoreBreakdown(breakdown)}
+                    </div>
+                    <div class="analysis-section">
+                        <h4>⚠️ Risk Assessment</h4>
+                        ${createRiskAssessment(risk)}
+                    </div>
+                    <div class="analysis-section">
+                        <h4>💰 Trading Setup</h4>
+                        ${createTradingSetup(analysis.trading_levels)}
+                    </div>
+                    <div class="analysis-section">
+                        <h4>💡 Key Insights</h4>
+                        ${createInsights(insights)}
+                    </div>
+                    <div class="analysis-section">
+                        <h4>📈 Price Levels</h4>
+                        ${createPriceLevels(breakdown, insights)}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function createScoreBreakdown(breakdown) {
+            const components = breakdown.components || {};
+            return Object.entries(components).map(([key, value]) => 
+                `<div class="metric">
+                    <span>${key.charAt(0).toUpperCase() + key.slice(1)}:</span>
+                    <span><strong>${typeof value === 'object' ? value.score || 'N/A' : value}</strong></span>
+                </div>`
+            ).join('');
+        }
+        
+        function createRiskAssessment(risk) {
+            const riskLevel = risk.risk_score > 60 ? 'high' : risk.risk_score > 30 ? 'medium' : 'low';
+            return `
+                <div class="metric">
+                    <span>Volatility:</span>
+                    <span>${risk.volatility || 'N/A'}%</span>
+                </div>
+                <div class="metric">
+                    <span>Max Drawdown:</span>
+                    <span>${risk.max_drawdown_60d || 'N/A'}%</span>
+                </div>
+                <div class="risk-indicator risk-${riskLevel}">
+                    ${risk.recommendation || 'Risk assessment unavailable'}
+                </div>
+            `;
+        }
+
+        function createTradingSetup(trading) {
+            if (!trading || trading.error) {
+                return '<div class="error">Trading levels unavailable</div>';
+            }
+
+            return `
+                <div class="metric">
+                    <span>Entry Price:</span>
+                    <span><strong>$${trading.entry_price || 'Market'}</strong></span>
+                </div>
+                <div class="metric">
+                    <span>Stop Loss:</span>
+                    <span style="color: #dc3545;"><strong>$${trading.stop_loss || 'N/A'}</strong></span>
+                </div>
+                <div class="metric">
+                    <span>Target 1:</span>
+                    <span style="color: #28a745;"><strong>$${trading.target_1 || 'N/A'}</strong></span>
+                </div>
+                <div class="metric">
+                    <span>Target 2:</span>
+                    <span style="color: #28a745;"><strong>$${trading.target_2 || 'N/A'}</strong></span>
+                </div>
+                <div class="metric">
+                    <span>Position Size:</span>
+                    <span><strong>${trading.shares || 'N/A'} shares</strong></span>
+                </div>
+                <div class="metric">
+                    <span>Risk/Share:</span>
+                    <span><strong>$${trading.risk_per_share || 'N/A'}</strong></span>
+                </div>
+                <div class="metric">
+                    <span>Total Risk:</span>
+                    <span><strong>$${trading.risk_amount || 'N/A'}</strong></span>
+                </div>
+                <div class="metric">
+                    <span>R/R Ratio:</span>
+                    <span><strong>${trading.reward_risk_ratio || 'N/A'}:1</strong></span>
+                </div>
+            `;
+        }
+        
+        function createInsights(insights) {
+            const keyInsights = insights.key_insights || [];
+            if (keyInsights.length === 0) {
+                return '<p>No specific insights available</p>';
+            }
+            
+            return `<ul class="insight-list">
+                ${keyInsights.map(insight => `<li>${insight}</li>`).join('')}
+            </ul>`;
+        }
+        
+        function createPriceLevels(breakdown, insights) {
+            const priceMetrics = breakdown.price_metrics || {};
+            const priceLevels = insights.price_levels || {};
+            
+            return `
+                <div class="metric">
+                    <span>Current Price:</span>
+                    <span>$${priceMetrics.current_price || priceLevels.current || 'N/A'}</span>
+                </div>
+                <div class="metric">
+                    <span>Resistance:</span>
+                    <span>$${priceLevels.resistance || 'N/A'}</span>
+                </div>
+                <div class="metric">
+                    <span>Support:</span>
+                    <span>$${priceLevels.support || 'N/A'}</span>
+                </div>
+                <div class="metric">
+                    <span>5-Day Change:</span>
+                    <span>${priceMetrics.change_5d || 'N/A'}%</span>
+                </div>
+            `;
+        }
+        
+        function refreshAnalysis() {
+            if (currentCandidates.length > 0) {
+                displayCandidates(currentCandidates);
+                document.getElementById('status').textContent = 'Refreshed';
+            }
+        }
+        
+        // Auto-refresh every 5 minutes
+        setInterval(() => {
+            if (currentCandidates.length > 0) {
+                refreshAnalysis();
+            }
+        }, 300000);
+
+        // Help modal functions
+        function toggleHelp() {
+            const modal = document.getElementById('helpModal');
+            if (modal.style.display === 'none' || modal.style.display === '') {
+                modal.style.display = 'flex';
+                document.body.style.overflow = 'hidden'; // Prevent background scrolling
+            } else {
+                modal.style.display = 'none';
+                document.body.style.overflow = 'auto';
+            }
+        }
+
+        // Close help modal when clicking outside
+        document.getElementById('helpModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                toggleHelp();
+            }
+        });
+
+        // Close help modal with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('helpModal');
+                if (modal.style.display === 'flex') {
+                    toggleHelp();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -357,10 +357,22 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
         elif parsed.path == '/api/knowledge':
             self.send_json(KNOWLEDGE)
         
-        elif parsed.path.startswith('/api/scan/') and '/status' in parsed.path:
-            run_id = parsed.path.split('/')[3]
-            if run_id in active_scans:
-                self.send_json(active_scans[run_id])
+        elif parsed.path.startswith('/api/scan/'):
+            # Handle both /api/scan/{run_id}/status and /api/scan/{run_id}
+            path_parts = parsed.path.split('/')
+            if len(path_parts) >= 4:
+                run_id = path_parts[3]
+                if run_id in active_scans:
+                    scan_data = active_scans[run_id].copy()
+                    # Format for enhanced UI compatibility
+                    if scan_data.get('state') == 'done':
+                        scan_data['state'] = 'complete'
+                        # Ensure candidates are properly formatted
+                        if 'results' in scan_data:
+                            scan_data['candidates'] = scan_data['results']
+                    self.send_json(scan_data)
+                else:
+                    self.send_error(404)
             else:
                 self.send_error(404)
         
@@ -393,6 +405,44 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
             else:
                 self.send_error(404)
         
+        elif parsed.path.startswith('/api/analyze/'):
+            # Detailed stock analysis for trust building
+            symbol = parsed.path.split('/')[-1].upper()
+
+            try:
+                # Get historical data
+                bars = get_historical_data_with_cache(symbol, days=550)
+
+                if bars and len(bars) >= 366:
+                    # Calculate detailed analysis
+                    score, gate_reason, components = calculate_score_v2(bars, symbol)
+                    breakdown = get_score_breakdown(bars, symbol, score, components)
+                    confidence = calculate_confidence_level(score, components)
+                    risk_assessment = get_risk_assessment(bars, symbol)
+                    trading_levels = calculate_trading_levels(bars, symbol, score, components)
+
+                    # Get additional insights
+                    insights = get_stock_insights(bars, symbol, score)
+
+                    analysis = {
+                        'symbol': symbol,
+                        'score': score,
+                        'gate_reason': gate_reason,
+                        'breakdown': breakdown,
+                        'confidence': confidence,
+                        'risk_assessment': risk_assessment,
+                        'trading_levels': trading_levels,
+                        'insights': insights,
+                        'timestamp': time.time()
+                    }
+
+                    self.send_json(analysis)
+                else:
+                    self.send_json({'error': f'Insufficient data for {symbol}'})
+
+            except Exception as e:
+                self.send_json({'error': f'Analysis failed for {symbol}: {str(e)}'})
+
         else:
             super().do_GET()
     
@@ -576,7 +626,7 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
                     errors.append({'symbol': o.get('symbol'), 'error': str(e)})
             
             self.send_json({'placed': placed, 'errors': errors})
-                
+
         else:
             self.send_error(404)
     
@@ -638,12 +688,23 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
                     rsi = output.get('rsi14', 50)
                     action = determine_action_v2(score, rsi, preset)
                     
+                    # Add detailed breakdown for trust building
+                    breakdown = get_score_breakdown(bars, ticker, score, components)
+
+                    # Debug confidence calculation
+                    confidence = calculate_confidence_level(score, components)
+                    print(f"DEBUG: {ticker} - Score: {score}, Components: {bool(components)}, Confidence: {confidence}")
+
                     stocks_with_scores.append({
                         'symbol': ticker,
                         'score': score,  # None if gates failed
+                        'confidence': confidence,  # Add confidence to scan results
                         'gate_reason': gate_reason,
                         'action': action,
-                        'output': output
+                        'output': output,
+                        'breakdown': breakdown,
+                        'confidence': confidence,
+                        'risk_assessment': get_risk_assessment(bars, ticker)
                     })
                     
                 elif bars:
@@ -743,6 +804,7 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
                 'symbol': stock_data['symbol'],
                 'close': round(close, 2) if close else None,
                 'score': round(score, 1) if score is not None else None,  # Explicit None
+                'confidence': stock_data.get('confidence', 'Unknown'),  # Add confidence from scan data
                 'rsi14': round(output.get('rsi14', 50), 1),
                 'action': stock_data['action'],
                 'entry_price': round(entry, 2) if entry else None,
@@ -779,7 +841,15 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
         # Store final results with telemetry
         active_scans[run_id]['state'] = 'done'
         active_scans[run_id]['results'] = results
-        active_scans[run_id]['telemetry'] = get_telemetry().get_summary()
+        telemetry_summary = get_telemetry().get_summary()
+        active_scans[run_id]['telemetry'] = telemetry_summary
+
+        # Print detailed skip reasons for debugging
+        print(f"\n=== DETAILED SKIP ANALYSIS ===", file=sys.stderr)
+        skip_reasons = telemetry_summary.get('skipped_reasons', {})
+        for reason, count in skip_reasons.items():
+            print(f"{reason}: {count} stocks", file=sys.stderr)
+        print(f"Total candidates found: {len(results)}", file=sys.stderr)
     
     def run_paper_scan(self, run_id):
         """Run paper trading scan in background."""
@@ -844,6 +914,395 @@ class WorkingHandlerV2(http.server.SimpleHTTPRequestHandler):
             print(f"Paper scan {run_id} failed: {e}", file=sys.stderr)
             active_paper_scans[run_id]['state'] = 'error'
             active_paper_scans[run_id]['error'] = str(e)
+
+def get_score_breakdown(bars, ticker, score, components):
+    """Get detailed breakdown of how score was calculated."""
+    try:
+        # Handle different bar formats (dict vs object with attributes)
+        def get_bar_value(bar, key):
+            if isinstance(bar, dict):
+                # Try different key formats
+                return bar.get(key) or bar.get(key[0]) or bar.get(key.upper())
+            else:
+                # Object with attributes
+                return getattr(bar, key, None) or getattr(bar, key[0], None)
+
+        # Get current price info
+        current_price = get_bar_value(bars[-1], 'close')
+        if not current_price:
+            return {'error': 'Could not get current price from bars data'}
+
+        # Calculate price changes safely
+        price_change_1d = 0
+        price_change_5d = 0
+
+        if len(bars) >= 2:
+            prev_price = get_bar_value(bars[-2], 'close')
+            if prev_price:
+                price_change_1d = ((current_price - prev_price) / prev_price) * 100
+
+        if len(bars) >= 6:
+            price_5d = get_bar_value(bars[-6], 'close')
+            if price_5d:
+                price_change_5d = ((current_price - price_5d) / price_5d) * 100
+
+        # Calculate volume metrics
+        volumes = []
+        for bar in bars[-20:]:
+            vol = get_bar_value(bar, 'volume')
+            if vol:
+                volumes.append(vol)
+
+        avg_volume_20 = sum(volumes) / len(volumes) if volumes else 0
+        current_volume = get_bar_value(bars[-1], 'volume') or 0
+        volume_ratio = current_volume / avg_volume_20 if avg_volume_20 > 0 else 1
+
+        # Calculate volatility
+        returns = []
+        for i in range(1, min(21, len(bars))):
+            curr_close = get_bar_value(bars[i], 'close')
+            prev_close = get_bar_value(bars[i-1], 'close')
+            if curr_close and prev_close:
+                returns.append(curr_close / prev_close - 1)
+
+        volatility = 0
+        if returns:
+            volatility = (sum(r*r for r in returns) / len(returns)) ** 0.5 * (252 ** 0.5) * 100
+
+        # Format components for display
+        formatted_components = {}
+        if components:
+            formatted_components = {
+                'Score': f"{score:.2f}" if score else "N/A",
+                'Model_version': components.get('model_version', 'N/A'),
+                'Percentiles': components.get('percentiles', {}),
+                'Raw_features': components.get('raw_features', {}),
+                'Gates_passed': components.get('gates_passed', 'N/A'),
+                'Market_regime': components.get('market_regime', 'N/A'),
+                'Adjusted_weights': components.get('adjusted_weights', {})
+            }
+
+        return {
+            'total_score': score,
+            'components': formatted_components,
+            'price_metrics': {
+                'current_price': round(current_price, 2),
+                'change_1d': round(price_change_1d, 2),
+                'change_5d': round(price_change_5d, 2)
+            },
+            'volume_metrics': {
+                'current_volume': int(current_volume),
+                'avg_volume_20d': int(avg_volume_20),
+                'volume_ratio': round(volume_ratio, 2)
+            },
+            'risk_metrics': {
+                'volatility_annualized': round(volatility, 1),
+                'risk_level': 'High' if volatility > 30 else 'Medium' if volatility > 20 else 'Low'
+            }
+        }
+    except Exception as e:
+        return {'error': f'Could not calculate breakdown: {str(e)}'}
+
+def get_confidence_level(score, components):
+    """Determine confidence level based on score and components."""
+    if score is None:
+        return 'No Score'
+
+    # Base confidence on score
+    if score >= 45:
+        base_confidence = 'Very High'
+    elif score >= 40:
+        base_confidence = 'High'
+    elif score >= 35:
+        base_confidence = 'Medium'
+    elif score >= 30:
+        base_confidence = 'Low'
+    else:
+        base_confidence = 'Very Low'
+
+    return base_confidence
+
+def get_risk_assessment(bars, ticker):
+    """Provide risk assessment for the stock."""
+    try:
+        # Handle different bar formats
+        def get_bar_value(bar, key):
+            if isinstance(bar, dict):
+                return bar.get(key) or bar.get(key[0]) or bar.get(key.upper())
+            else:
+                return getattr(bar, key, None) or getattr(bar, key[0], None)
+
+        # Calculate various risk metrics
+        current_price = get_bar_value(bars[-1], 'close')
+        if not current_price:
+            return {'error': 'Could not get current price'}
+
+        # Price volatility (20-day)
+        returns = []
+        for i in range(max(1, len(bars)-20), len(bars)):
+            if i > 0:
+                curr_close = get_bar_value(bars[i], 'close')
+                prev_close = get_bar_value(bars[i-1], 'close')
+                if curr_close and prev_close:
+                    returns.append(curr_close / prev_close - 1)
+
+        volatility = 0
+        if returns:
+            volatility = (sum(r*r for r in returns) / len(returns)) ** 0.5 * (252 ** 0.5) * 100
+
+        # Maximum drawdown (60-day)
+        prices = []
+        for bar in bars[-60:]:
+            price = get_bar_value(bar, 'close')
+            if price:
+                prices.append(price)
+
+        max_drawdown = 0
+        if prices:
+            peak = prices[0]
+            for price in prices:
+                if price > peak:
+                    peak = price
+                drawdown = (peak - price) / peak if peak > 0 else 0
+                max_drawdown = max(max_drawdown, drawdown)
+
+        # Volume consistency
+        volumes = []
+        for bar in bars[-20:]:
+            vol = get_bar_value(bar, 'volume')
+            if vol:
+                volumes.append(vol)
+
+        volume_consistency = 0
+        if volumes:
+            avg_volume = sum(volumes) / len(volumes)
+            if avg_volume > 0:
+                volume_std = (sum((v - avg_volume)**2 for v in volumes) / len(volumes)) ** 0.5
+                volume_consistency = 1 - (volume_std / avg_volume)
+
+        risk_score = calculate_risk_score(volatility, max_drawdown, volume_consistency)
+
+        return {
+            'volatility': round(volatility, 1),
+            'max_drawdown_60d': round(max_drawdown * 100, 1),
+            'volume_consistency': round(max(0, volume_consistency), 2),
+            'risk_score': risk_score,
+            'recommendation': get_risk_recommendation(volatility, max_drawdown)
+        }
+    except Exception as e:
+        return {'error': f'Could not assess risk: {str(e)}'}
+
+def calculate_risk_score(volatility, max_drawdown, volume_consistency):
+    """Calculate overall risk score (0-100, lower is better)."""
+    vol_score = min(volatility * 2, 50)  # Cap at 50
+    drawdown_score = max_drawdown * 100 * 0.5  # Weight drawdown
+    volume_score = (1 - volume_consistency) * 20  # Inconsistent volume adds risk
+
+    total_risk = vol_score + drawdown_score + volume_score
+    return min(100, round(total_risk))
+
+def get_risk_recommendation(volatility, max_drawdown):
+    """Get risk-based recommendation."""
+    if volatility > 40 or max_drawdown > 0.3:
+        return "High Risk - Consider smaller position size"
+    elif volatility > 25 or max_drawdown > 0.2:
+        return "Medium Risk - Standard position size"
+    else:
+        return "Lower Risk - Suitable for larger position"
+
+
+def calculate_confidence_level(score, components):
+    """Calculate confidence level based on score and component alignment."""
+    if not score or not components:
+        return "Unknown"
+
+    # Get raw features for more detailed analysis
+    raw_features = components.get('raw_features', {})
+    percentiles = components.get('percentiles', {})
+
+    # Count strong signals (percentiles > 60)
+    strong_signals = 0
+    total_signals = 0
+
+    for key, value in percentiles.items():
+        if isinstance(value, (int, float)):
+            total_signals += 1
+            if value >= 60:
+                strong_signals += 1
+
+    # Calculate alignment ratio
+    alignment_ratio = strong_signals / total_signals if total_signals > 0 else 0
+
+    # High confidence: Score > 40 AND good alignment
+    if score >= 40 and alignment_ratio >= 0.75:
+        return "High"
+    elif score >= 35 and alignment_ratio >= 0.5:
+        return "Medium"
+    elif score >= 30:
+        return "Low"
+    else:
+        return "Very Low"
+
+
+def calculate_trading_levels(bars, symbol, score, components):
+    """Calculate entry, stop loss, and target prices for trading."""
+    try:
+        # Handle different bar formats
+        def get_bar_value(bar, key):
+            if isinstance(bar, dict):
+                return bar.get(key) or bar.get(key[0]) or bar.get(key.upper())
+            else:
+                return getattr(bar, key, None) or getattr(bar, key[0], None)
+
+        current_price = get_bar_value(bars[-1], 'close')
+        if not current_price:
+            return {}
+
+        # Get ATR for stop loss calculation
+        raw_features = components.get('raw_features', {}) if components else {}
+        atr_value = raw_features.get('atr_value', 0)
+
+        # If no ATR, calculate simple volatility
+        if not atr_value and len(bars) >= 20:
+            returns = []
+            for i in range(max(1, len(bars)-20), len(bars)):
+                if i > 0:
+                    curr_close = get_bar_value(bars[i], 'close')
+                    prev_close = get_bar_value(bars[i-1], 'close')
+                    if curr_close and prev_close:
+                        returns.append(abs(curr_close - prev_close))
+            atr_value = sum(returns) / len(returns) if returns else current_price * 0.02
+
+        # Default to 2% if still no ATR
+        if not atr_value:
+            atr_value = current_price * 0.02
+
+        # Calculate trading levels
+        entry_price = current_price  # Market entry
+        stop_loss = current_price - (atr_value * 2)  # 2x ATR stop
+        target_1 = current_price + (atr_value * 3)   # 3x ATR target (1.5:1 R/R)
+        target_2 = current_price + (atr_value * 4)   # 4x ATR target (2:1 R/R)
+
+        # Calculate position sizing (0.5% portfolio risk)
+        risk_per_share = current_price - stop_loss
+        portfolio_value = 100000  # Assume $100k portfolio
+        risk_amount = portfolio_value * 0.005  # 0.5% risk
+        shares = int(risk_amount / risk_per_share) if risk_per_share > 0 else 100
+
+        # Ensure minimum viable trade
+        shares = max(shares, 1)
+
+        return {
+            'entry_price': round(entry_price, 2),
+            'stop_loss': round(stop_loss, 2),
+            'target_1': round(target_1, 2),
+            'target_2': round(target_2, 2),
+            'shares': shares,
+            'risk_per_share': round(risk_per_share, 2),
+            'risk_amount': round(shares * risk_per_share, 2),
+            'reward_risk_ratio': round((target_1 - entry_price) / risk_per_share, 2) if risk_per_share > 0 else 0
+        }
+
+    except Exception as e:
+        return {'error': f'Could not calculate trading levels: {str(e)}'}
+
+def get_stock_insights(bars, symbol, score):
+    """Generate actionable insights about the stock."""
+    try:
+        # Handle different bar formats
+        def get_bar_value(bar, key):
+            if isinstance(bar, dict):
+                return bar.get(key) or bar.get(key[0]) or bar.get(key.upper())
+            else:
+                return getattr(bar, key, None) or getattr(bar, key[0], None)
+
+        insights = []
+
+        # Price trend analysis
+        current_price = get_bar_value(bars[-1], 'close')
+        if not current_price:
+            return {'error': 'Could not get current price', 'key_insights': []}
+
+        price_5d = get_bar_value(bars[-6], 'close') if len(bars) >= 6 else current_price
+        price_20d = get_bar_value(bars[-21], 'close') if len(bars) >= 21 else current_price
+
+        trend_5d = ((current_price - price_5d) / price_5d) * 100 if price_5d else 0
+        trend_20d = ((current_price - price_20d) / price_20d) * 100 if price_20d else 0
+
+        if trend_5d > 2:
+            insights.append(f"Strong 5-day momentum: +{trend_5d:.1f}%")
+        elif trend_5d < -2:
+            insights.append(f"Weak 5-day momentum: {trend_5d:.1f}%")
+
+        if trend_20d > 5:
+            insights.append(f"Strong 20-day trend: +{trend_20d:.1f}%")
+        elif trend_20d < -5:
+            insights.append(f"Declining 20-day trend: {trend_20d:.1f}%")
+
+        # Volume analysis
+        volumes = []
+        for bar in bars[-20:]:
+            vol = get_bar_value(bar, 'volume')
+            if vol:
+                volumes.append(vol)
+
+        avg_volume_20 = sum(volumes) / len(volumes) if volumes else 0
+        current_volume = get_bar_value(bars[-1], 'volume') or 0
+        volume_ratio = current_volume / avg_volume_20 if avg_volume_20 > 0 else 1
+
+        if volume_ratio > 1.5:
+            insights.append(f"High volume activity: {volume_ratio:.1f}x average")
+        elif volume_ratio < 0.5:
+            insights.append(f"Low volume: {volume_ratio:.1f}x average")
+
+        # Score interpretation
+        if score and score >= 40:
+            insights.append("High scoring opportunity - strong technical setup")
+        elif score and score >= 35:
+            insights.append("Moderate scoring opportunity - decent setup")
+        elif score and score < 30:
+            insights.append("Low score - weak technical setup")
+
+        # Support/Resistance levels
+        recent_highs = []
+        recent_lows = []
+        for bar in bars[-20:]:
+            high = get_bar_value(bar, 'high')
+            low = get_bar_value(bar, 'low')
+            if high:
+                recent_highs.append(high)
+            if low:
+                recent_lows.append(low)
+
+        resistance = max(recent_highs) if recent_highs else current_price
+        support = min(recent_lows) if recent_lows else current_price
+
+        distance_to_resistance = ((resistance - current_price) / current_price) * 100
+        distance_to_support = ((current_price - support) / current_price) * 100
+
+        if distance_to_resistance < 2:
+            insights.append(f"Near resistance at ${resistance:.2f}")
+        if distance_to_support < 2:
+            insights.append(f"Near support at ${support:.2f}")
+
+        return {
+            'key_insights': insights[:5],  # Limit to top 5 insights
+            'price_levels': {
+                'current': current_price,
+                'resistance': resistance,
+                'support': support
+            },
+            'trends': {
+                'short_term': trend_5d,
+                'medium_term': trend_20d
+            },
+            'volume_analysis': {
+                'current_ratio': round(volume_ratio, 2),
+                'interpretation': 'High' if volume_ratio > 1.5 else 'Low' if volume_ratio < 0.5 else 'Normal'
+            }
+        }
+    except Exception as e:
+        return {'error': f'Could not generate insights: {str(e)}', 'key_insights': []}
 
 PORT = 8002
 print(f"Starting SwingTrading Server v2 on port {PORT}")
